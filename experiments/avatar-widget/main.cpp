@@ -12,6 +12,9 @@ struct HeaderAvatar {
  uint32_t now=0,idleSince=0,celebrateUntil=0;
  float awakeEyeWidth=50,awakeEyeHeight=56;
  int previousActive=0,previousDone=0;
+ // Herdr can split one completion over two polls; callers whose snapshots are
+ // always atomic (the product site) turn this off so plain decrements show at once.
+ bool pairSplitCompletions=true;
  void frame(uint32_t ms,int active,int blocked,int done,bool listening,bool healthy,uint32_t background=0) {
   const float dt=initialized?fminf((ms-now)/1000.0f,.1f):0;
   now=ms;
@@ -19,7 +22,7 @@ struct HeaderAvatar {
   const bool baseline=initialized&&wasHealthy&&healthy&&!wasListening&&!listening;
   // Same pairing as the firmware: one completion split over two polls is
   // presented together so the transfer plays instead of a plain reflow.
-  if(baseline)preview.pairing.filter(ms,previousDone,previousActive,done,active,
+  if(baseline&&pairSplitCompletions)preview.pairing.filter(ms,previousDone,previousActive,done,active,
       blocked==0&&!preview.button.active&&preview.shownActive>0);
   else preview.pairing.reset();
   if(!healthy||listening||blocked)celebrateUntil=ms;

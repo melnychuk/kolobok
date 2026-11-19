@@ -52,6 +52,9 @@ extern "C" {
 __attribute__((export_name("stick_init"))) void stick_init() {
  delete avatar;
  avatar=new HeaderAvatar();
+ // The site sets counts atomically, so never hold half of a "split" completion:
+ // that made playground decrements (with no done count) stick for up to 4.6s.
+ avatar->pairSplitCompletions=false;
  forcedState=-1;
 }
 __attribute__((export_name("stick_frame_ptr"))) unsigned char* stick_frame_ptr() { return site_io::frame; }

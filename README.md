@@ -66,5 +66,15 @@ python3 scripts/preview-avatar.py
 
 Design and behaviour are documented in [avatar design](docs/avatar-design.md),
 [task cues](docs/avatar-task-cues.md) and
-[render performance](docs/render-performance.md). Display fonts are generated
-from DejaVu Sans ([license](docs/dejavu-font-license.txt)).
+[render performance](docs/render-performance.md).
+
+## Credits and license
+
+The robot eyes started from [FluxGarage RoboEyes](https://github.com/FluxGarage/RoboEyes),
+which drew the first prototype's eyes. They were then rebuilt from scratch and
+extended here: authored acting, a soft-body face, fluid edges, Roman task
+counters and the cues around them. No RoboEyes code is included.
+
+MIT licensed; see [LICENSE](LICENSE). The generated display fonts in
+`firmware/display_fonts.h` derive from DejaVu Sans and keep their own
+[license](docs/dejavu-font-license.txt).
