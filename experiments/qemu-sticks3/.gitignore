@@ -1,0 +1,7 @@
+probe/build/
+probe/sdkconfig
+probe/sdkconfig.old
+probe/compile_commands.json
+probe/.clangd
+probe/main/main.c.tmp
+__pycache__/

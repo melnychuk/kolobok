@@ -1,0 +1,9 @@
+[project]
+name = "copilot-stick-s3"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"

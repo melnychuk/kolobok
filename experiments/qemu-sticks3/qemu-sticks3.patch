@@ -1,0 +1,840 @@
+diff --git a/hw/display/meson.build b/hw/display/meson.build
+index 36a9ace56ed59bcdc5b3c310b2771e59997820a4..593c1c18e9ad882fe55ac63ef078e6b571e4f2c1 100644
+--- a/hw/display/meson.build
++++ b/hw/display/meson.build
+@@ -32,6 +32,7 @@ system_ss.add(when: 'CONFIG_CG3', if_true: files('cg3.c'))
+ system_ss.add(when: 'CONFIG_MACFB', if_true: files('macfb.c'))
+ system_ss.add(when: 'CONFIG_NEXTCUBE', if_true: files('next-fb.c'))
+ system_ss.add(when: 'CONFIG_ESP_RGB', if_true: files('esp_rgb.c'))
++system_ss.add(when: 'CONFIG_XTENSA_ESP32S3', if_true: files('esp32s3_stick_lcd.c'))
+ 
+ system_ss.add(when: 'CONFIG_VGA', if_true: files('vga.c'))
+ system_ss.add(when: 'CONFIG_VIRTIO', if_true: files('virtio-dmabuf.c'))
+diff --git a/hw/gpio/esp32_gpio.c b/hw/gpio/esp32_gpio.c
+index 4fea1f5cc736778f4bb6fca8a27116baf9d73569..b086c39f377a7b9439f69ee97dc4908fec130596 100644
+--- a/hw/gpio/esp32_gpio.c
++++ b/hw/gpio/esp32_gpio.c
+@@ -30,7 +30,10 @@ static uint64_t esp32_gpio_read(void *opaque, hwaddr addr, unsigned int size)
+         r = s->strap_mode;
+         break;
+ 
++    case 0x3c: r = s->regs[0x04 / 4]; break;
++    case 0x40: r = s->regs[0x10 / 4]; break;
+     default:
++        r = s->regs[addr / 4];
+         break;
+     }
+     return r;
+@@ -39,6 +42,25 @@ static uint64_t esp32_gpio_read(void *opaque, hwaddr addr, unsigned int size)
+ static void esp32_gpio_write(void *opaque, hwaddr addr,
+                        uint64_t value, unsigned int size)
+ {
++    Esp32GpioState *s = ESP32_GPIO(opaque);
++    switch (addr) {
++    case 0x08: s->regs[0x04 / 4] |= value; break;
++    case 0x0c: s->regs[0x04 / 4] &= ~value; break;
++    case 0x14: s->regs[0x10 / 4] |= value; break;
++    case 0x18: s->regs[0x10 / 4] &= ~value; break;
++    case 0x24: s->regs[0x20 / 4] |= value; break;
++    case 0x28: s->regs[0x20 / 4] &= ~value; break;
++    case 0x30: s->regs[0x2c / 4] |= value; break;
++    case 0x34: s->regs[0x2c / 4] &= ~value; break;
++    default: s->regs[addr / 4] = value; break;
++    }
++    /* Output-latch bring-up only: GPIO matrix/input/pulls/edge IRQs are future work. */
++    if (addr <= 0x34) {
++        for (unsigned pin = 0; pin < 49; pin++) {
++            uint32_t output = s->regs[(pin < 32 ? 0x04 : 0x10) / 4];
++            qemu_set_irq(s->pins[pin], (output >> (pin % 32)) & 1);
++        }
++    }
+ }
+ 
+ static const MemoryRegionOps uart_ops = {
+@@ -49,6 +71,8 @@ static const MemoryRegionOps uart_ops = {
+ 
+ static void esp32_gpio_reset_hold(Object *obj, ResetType type)
+ {
++    Esp32GpioState *s = ESP32_GPIO(obj);
++    memset(s->regs, 0, sizeof(s->regs));
+ }
+ 
+ static void esp32_gpio_realize(DeviceState *dev, Error **errp)
+@@ -67,6 +91,7 @@ static void esp32_gpio_init(Object *obj)
+                           TYPE_ESP32_GPIO, 0x1000);
+     sysbus_init_mmio(sbd, &s->iomem);
+     sysbus_init_irq(sbd, &s->irq);
++    qdev_init_gpio_out_named(DEVICE(obj), s->pins, "pin", 49);
+ }
+ 
+ static Property esp32_gpio_properties[] = {
+diff --git a/hw/misc/esp32c3_jtag.c b/hw/misc/esp32c3_jtag.c
+index 82ee69717bc7daa6e87739ede9ffa7572709e73e..4003521a0ba56bbc202202bd883c6c9cba59e9c0 100644
+--- a/hw/misc/esp32c3_jtag.c
++++ b/hw/misc/esp32c3_jtag.c
+@@ -1,82 +1,195 @@
+ /*
+- * ESP32-C3 USB Serial JTAG emulation
+- *
++ * ESP32-C3/S3 USB Serial/JTAG CDC firmware-interface bring-up.
+  * Copyright (c) 2023 Espressif Systems (Shanghai) Co. Ltd.
+- *
+- * This program is free software; you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License version 2 or
+- * (at your option) any later version.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ * Local chardev is a packet-service backend, NOT host USB enumeration/JTAG.
+  */
+ #include "qemu/osdep.h"
+ #include "qemu/log.h"
+ #include "qemu/module.h"
+-#include "qemu/error-report.h"
+-#include "hw/hw.h"
+-#include "hw/sysbus.h"
++#include "qapi/error.h"
++#include "hw/irq.h"
++#include "hw/qdev-properties.h"
++#include "hw/qdev-properties-system.h"
+ #include "hw/misc/esp32c3_jtag.h"
+ 
++#define EP1 0x00
++#define EP_CONF 0x04
++#define INT_RAW 0x08
++#define INT_ST 0x0c
++#define INT_ENA 0x10
++#define INT_CLR 0x14
++#define FRAME_NUMBER 0x24
++#define IN_EMPTY BIT(3)
++#define OUT_RECEIVED BIT(2)
++#define SOF BIT(1)
++#define BUS_RESET BIT(9)
+ 
+-static uint64_t esp32c3_jtag_read(void *opaque, hwaddr addr, unsigned int size)
++static void usb_irq(ESP32C3UsbJtagState *s)
++{
++    qemu_set_irq(s->irq, !!(s->regs[INT_RAW / 4] & s->regs[INT_ENA / 4]));
++}
++
++static void usb_poll(void *opaque)
++{
++    ESP32C3UsbJtagState *s = opaque;
++    if (s->connected) {
++        s->frame_number = (s->frame_number + 1) & 0x7ff;
++        s->regs[INT_RAW / 4] |= SOF;
++        if (s->tx_ready) {
++            int written = s->tx_len == s->tx_offset ? 0 :
++                qemu_chr_fe_write(&s->chr, s->tx + s->tx_offset, s->tx_len - s->tx_offset);
++            if (written > 0) { s->tx_offset += written; }
++            if (s->tx_offset == s->tx_len) {
++                s->tx_len = s->tx_offset = 0;
++                s->tx_ready = false;
++                s->regs[INT_RAW / 4] |= IN_EMPTY | BIT(8);
++            }
++        }
++        usb_irq(s);
++    }
++    timer_mod(s->poll_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + (uint64_t)s->poll_us * 1000);
++}
++
++static int usb_can_receive(void *opaque)
++{
++    ESP32C3UsbJtagState *s = opaque;
++    return s->rx_offset == s->rx_len ? 64 : 0;
++}
++
++static void usb_receive(void *opaque, const uint8_t *buffer, int size)
++{
++    ESP32C3UsbJtagState *s = opaque;
++    if (size <= 0 || size > 64 || s->rx_offset != s->rx_len) { return; }
++    memcpy(s->rx, buffer, size);
++    s->rx_len = size;
++    s->rx_offset = 0;
++    s->regs[INT_RAW / 4] |= OUT_RECEIVED;
++    usb_irq(s);
++}
++
++static void usb_event(void *opaque, QEMUChrEvent event)
++{
++    ESP32C3UsbJtagState *s = opaque;
++    if (event == CHR_EVENT_OPENED) {
++        s->connected = true;
++        s->regs[INT_RAW / 4] |= BUS_RESET | IN_EMPTY;
++    } else if (event == CHR_EVENT_CLOSED) {
++        s->connected = false;
++        s->tx_len = s->tx_offset = s->rx_len = s->rx_offset = 0;
++        s->tx_ready = false;
++        s->regs[INT_RAW / 4] |= BUS_RESET;
++    }
++    usb_irq(s);
++}
++
++static uint64_t esp32c3_jtag_read(void *opaque, hwaddr addr, unsigned size)
+ {
+     ESP32C3UsbJtagState *s = ESP32C3_JTAG(opaque);
+-    (void) s;
+-    return 0;
++    switch (addr) {
++    case EP1:
++        if (s->rx_offset < s->rx_len) {
++            uint8_t value = s->rx[s->rx_offset++];
++            if (s->rx_offset == s->rx_len) { qemu_chr_fe_accept_input(&s->chr); }
++            return value;
++        }
++        return 0;
++    case EP_CONF:
++        return ((!s->tx_ready && s->tx_len < 64) ? BIT(1) : 0) |
++               ((s->rx_offset < s->rx_len) ? BIT(2) : 0);
++    case INT_ST: return s->regs[INT_RAW / 4] & s->regs[INT_ENA / 4];
++    case FRAME_NUMBER: return s->frame_number;
++    default: return s->regs[addr / 4];
++    }
+ }
+ 
+-static void esp32c3_jtag_write(void *opaque, hwaddr addr, uint64_t value, unsigned int size)
++static void esp32c3_jtag_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
+ {
+     ESP32C3UsbJtagState *s = ESP32C3_JTAG(opaque);
+-    (void) s;
++    switch (addr) {
++    case EP1:
++        if (s->tx_ready || s->tx_len == 64) {
++            qemu_log_mask(LOG_GUEST_ERROR, "usb-serial-jtag: TX FIFO write while unavailable\n");
++            break;
++        }
++        s->tx[s->tx_len++] = value;
++        if (s->tx_len == 64) { s->tx_ready = true; s->regs[INT_RAW / 4] &= ~IN_EMPTY; }
++        break;
++    case EP_CONF:
++        if (value & 1) { s->tx_ready = true; s->regs[INT_RAW / 4] &= ~IN_EMPTY; }
++        break;
++    case INT_CLR: s->regs[INT_RAW / 4] &= ~value; break;
++    case INT_ST:
++    case FRAME_NUMBER: break;
++    default: s->regs[addr / 4] = value; break;
++    }
++    usb_irq(s);
+ }
+ 
+ static const MemoryRegionOps esp32c3_jtag_ops = {
+-    .read =  esp32c3_jtag_read,
+-    .write = esp32c3_jtag_write,
++    .read = esp32c3_jtag_read, .write = esp32c3_jtag_write,
+     .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4, .valid.max_access_size = 4,
+ };
+ 
+ static void esp32c3_jtag_reset_hold(Object *obj, ResetType type)
+ {
+-    (void) obj;
+-    (void) type;
++    ESP32C3UsbJtagState *s = ESP32C3_JTAG(obj);
++    memset(s->regs, 0, sizeof(s->regs));
++    s->regs[INT_RAW / 4] = IN_EMPTY;
++    s->tx_len = s->tx_offset = s->rx_len = s->rx_offset = s->frame_number = 0;
++    s->tx_ready = false;
++    s->connected = qemu_chr_fe_backend_connected(&s->chr);
++    usb_irq(s);
+ }
+ 
+ static void esp32c3_jtag_realize(DeviceState *dev, Error **errp)
+ {
+-    (void) dev;
+-    (void) errp;
++    ESP32C3UsbJtagState *s = ESP32C3_JTAG(dev);
++    if (!s->poll_us || s->poll_us > 1000000) {
++        error_setg(errp, "poll-us must be 1..1000000");
++        return;
++    }
++    qemu_chr_fe_set_handlers(&s->chr, usb_can_receive, usb_receive, usb_event, NULL, s, NULL, true);
++    timer_mod(s->poll_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + (uint64_t)s->poll_us * 1000);
+ }
+ 
+ static void esp32c3_jtag_init(Object *obj)
+ {
+     ESP32C3UsbJtagState *s = ESP32C3_JTAG(obj);
+-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+-
+     memory_region_init_io(&s->iomem, obj, &esp32c3_jtag_ops, s,
+                           TYPE_ESP32C3_JTAG, ESP32C3_JTAG_REGS_SIZE);
+-    sysbus_init_mmio(sbd, &s->iomem);
++    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
++    sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq);
++    s->poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, usb_poll, s);
++}
++
++static void esp32c3_jtag_finalize(Object *obj)
++{
++    ESP32C3UsbJtagState *s = ESP32C3_JTAG(obj);
++    timer_free(s->poll_timer);
++    qemu_chr_fe_deinit(&s->chr, true);
+ }
+ 
++static Property usb_properties[] = {
++    DEFINE_PROP_CHR("chardev", ESP32C3UsbJtagState, chr),
++    DEFINE_PROP_UINT32("poll-us", ESP32C3UsbJtagState, poll_us, 1000),
++    DEFINE_PROP_END_OF_LIST(),
++};
++
+ static void esp32c3_jtag_class_init(ObjectClass *klass, void *data)
+ {
+     DeviceClass *dc = DEVICE_CLASS(klass);
+-    ResettableClass *rc = RESETTABLE_CLASS(klass);
+-
+-    rc->phases.hold = esp32c3_jtag_reset_hold;
++    RESETTABLE_CLASS(klass)->phases.hold = esp32c3_jtag_reset_hold;
+     dc->realize = esp32c3_jtag_realize;
++    device_class_set_props(dc, usb_properties);
+ }
+ 
+ static const TypeInfo esp32c3_jtag_info = {
+-    .name = TYPE_ESP32C3_JTAG,
+-    .parent = TYPE_SYS_BUS_DEVICE,
+-    .instance_size = sizeof(ESP32C3UsbJtagState),
+-    .instance_init = esp32c3_jtag_init,
+-    .class_init = esp32c3_jtag_class_init
++    .name = TYPE_ESP32C3_JTAG, .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(ESP32C3UsbJtagState), .instance_init = esp32c3_jtag_init,
++    .instance_finalize = esp32c3_jtag_finalize, .class_init = esp32c3_jtag_class_init,
+ };
+ 
+-static void esp32c3_jtag_types(void)
+-{
+-    type_register_static(&esp32c3_jtag_info);
+-}
+-
++static void esp32c3_jtag_types(void) { type_register_static(&esp32c3_jtag_info); }
+ type_init(esp32c3_jtag_types)
+diff --git a/hw/xtensa/esp32s3.c b/hw/xtensa/esp32s3.c
+index 4a24a040fa142b773442c5c3f5c9b173e3f409fb..941f9a673d741d076f6b0069691150aee12e94c1 100644
+--- a/hw/xtensa/esp32s3.c
++++ b/hw/xtensa/esp32s3.c
+@@ -69,6 +69,7 @@
+ 
+ #include "hw/misc/esp32c3_jtag.h"
+ #include "hw/display/esp_rgb.h"
++#include "hw/display/esp32s3_stick_lcd.h"
+ 
+ #define TYPE_ESP32S3_SOC "xtensa.esp32s3"
+ #define ESP32S3_SOC(obj) OBJECT_CHECK(Esp32s3SocState, (obj), TYPE_ESP32S3_SOC)
+@@ -150,6 +151,7 @@ typedef struct Esp32s3SocState {
+ 
+     ESP32C3UsbJtagState jtag;
+     ESPRgbState rgb;
++    Esp32S3StickLCDState stick_lcd;
+ 
+     MemoryRegion iomem;
+     DWCSDMMCState sdmmc;
+@@ -318,6 +320,7 @@ struct Esp32s3MachineState {
+ 
+     Esp32s3SocState esp32s3;
+     DeviceState *flash_dev;
++    bool stick_lcd;
+ };
+ #define TYPE_ESP32S3_MACHINE MACHINE_TYPE_NAME("esp32s3")
+ 
+@@ -673,6 +676,8 @@ static void esp32s3_machine_init(MachineState *machine)
+         sysbus_realize(SYS_BUS_DEVICE(&ss->jtag), &error_fatal);
+         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ss->jtag), 0);
+         memory_region_add_subregion_overlap(sys_mem, DR_REG_USB_SERIAL_JTAG_BASE, mr, 0);
++        sysbus_connect_irq(SYS_BUS_DEVICE(&ss->jtag), 0,
++                          qdev_get_gpio_in(intmatrix_dev, ETS_USB_SERIAL_JTAG_INTR_SOURCE));
+     }
+ 
+     /* SPI1 controller (SPI Flash) */
+@@ -797,6 +802,22 @@ static void esp32s3_machine_init(MachineState *machine)
+         }
+    }
+ 
++    if (ms->stick_lcd) {
++        object_initialize_child(OBJECT(ss), "stick-lcd", &ss->stick_lcd, TYPE_ESP32S3_STICK_LCD);
++        DEVICE(&ss->stick_lcd)->id = g_strdup("stick-lcd");
++        sysbus_realize(SYS_BUS_DEVICE(&ss->stick_lcd), &error_fatal);
++        memory_region_add_subregion_overlap(sys_mem, DR_REG_SPI2_BASE + 0x1000,
++            sysbus_mmio_get_region(SYS_BUS_DEVICE(&ss->stick_lcd), 0), 0);
++        sysbus_connect_irq(SYS_BUS_DEVICE(&ss->stick_lcd), 0,
++                          qdev_get_gpio_in(intmatrix_dev, ETS_SPI3_INTR_SOURCE));
++        qdev_connect_gpio_out_named(DEVICE(&ss->gpio), "pin", 45,
++                                   qdev_get_gpio_in(DEVICE(&ss->stick_lcd), 0));
++        qdev_connect_gpio_out_named(DEVICE(&ss->gpio), "pin", 21,
++                                   qdev_get_gpio_in(DEVICE(&ss->stick_lcd), 1));
++        qdev_connect_gpio_out_named(DEVICE(&ss->gpio), "pin", 41,
++                                   qdev_get_gpio_in(DEVICE(&ss->stick_lcd), 2));
++    }
++
+     /* SHA realization */
+     {
+         ss->sha.parent.gdma = ESP_GDMA(&ss->gdma);
+@@ -974,6 +995,16 @@ static ram_addr_t esp32s3_fixup_ram_size(ram_addr_t requested_size)
+     return size;
+ }
+ 
++static bool esp32s3_get_stick_lcd(Object *obj, Error **errp)
++{
++    return ESP32S3_MACHINE(obj)->stick_lcd;
++}
++
++static void esp32s3_set_stick_lcd(Object *obj, bool value, Error **errp)
++{
++    ESP32S3_MACHINE(obj)->stick_lcd = value;
++}
++
+ /* Initialize machine type */
+ static void esp32s3_machine_class_init(ObjectClass *oc, void *data)
+ {
+@@ -984,6 +1015,7 @@ static void esp32s3_machine_class_init(ObjectClass *oc, void *data)
+     mc->default_cpus = 2;
+     mc->default_ram_size = 0;
+     mc->fixup_ram_size = esp32s3_fixup_ram_size;
++    object_class_property_add_bool(oc, "stick-lcd", esp32s3_get_stick_lcd, esp32s3_set_stick_lcd);
+ }
+ 
+ static const TypeInfo esp32s3_info = {
+diff --git a/hw/xtensa/esp32s3_intc.c b/hw/xtensa/esp32s3_intc.c
+index 043723055a6c91e824fd760cc8167d999791f2a9..b5b860a6bcd6dd600026090dd4f019f1123f5fdf 100644
+--- a/hw/xtensa/esp32s3_intc.c
++++ b/hw/xtensa/esp32s3_intc.c
+@@ -26,27 +26,34 @@
+ 
+ #define IRQ_MAP(cpu, input) s->irq_map[cpu][input]
+ 
+-static void esp32s3_intmatrix_irq_handler(void *opaque, int n, int level)
++static void esp32s3_intmatrix_update(Esp32s3IntMatrixState *s)
+ {
+-    Esp32s3IntMatrixState *s = ESP32S3_INTMATRIX(opaque);
+     for (int i = 0; i < ESP32S3_CPU_COUNT; ++i) {
+-        if (s->outputs[i] == NULL) {
+-            continue;
+-        }
+-        int out_index = IRQ_MAP(i, n);
++        if (s->outputs[i] == NULL) { continue; }
+         for (int int_index = 0; int_index < s->cpu[i]->env.config->nextint; ++int_index) {
+-            if (s->cpu[i]->env.config->extint[int_index] == out_index) {
+-                qemu_set_irq(s->outputs[i][int_index], level);
+-                break;
++            int out_index = s->cpu[i]->env.config->extint[int_index];
++            bool level = false;
++            for (int source = 0; source < ESP32S3_INT_MATRIX_INPUTS; source++) {
++                level |= s->input_level[source] && IRQ_MAP(i, source) == out_index;
+             }
++            qemu_set_irq(s->outputs[i][int_index], level);
+         }
+     }
+ }
+ 
++static void esp32s3_intmatrix_irq_handler(void *opaque, int n, int level)
++{
++    Esp32s3IntMatrixState *s = ESP32S3_INTMATRIX(opaque);
++    if (s->input_level[n] != !!level) {
++        s->input_level[n] = !!level;
++        esp32s3_intmatrix_update(s);
++    }
++}
++
+ static inline uint8_t* get_map_entry(Esp32s3IntMatrixState* s, hwaddr addr)
+ {
+     int source_index = addr / sizeof(uint32_t);
+-    if (source_index > ESP32S3_INT_MATRIX_INPUTS * ESP32S3_CPU_COUNT) {
++    if (source_index >= ESP32S3_INT_MATRIX_INPUTS * ESP32S3_CPU_COUNT) {
+ #if INTC_DEBUG
+         info_report("%s: source_index %d out of range", __func__, source_index);
+ #endif // INTC_DEBUG
+@@ -73,6 +80,8 @@ static void esp32s3_intmatrix_write(void* opaque, hwaddr addr, uint64_t value, u
+     uint8_t* map_entry = get_map_entry(s, addr);
+     if (map_entry != NULL) {
+         *map_entry = value & 0x1f;
++        /* Routing an asserted peripheral must assert its new CPU line. */
++        esp32s3_intmatrix_update(s);
+     }
+ }
+ 
+@@ -86,6 +95,7 @@ static void esp32s3_intmatrix_reset_hold(Object *obj, ResetType type)
+ {
+     Esp32s3IntMatrixState *s = ESP32S3_INTMATRIX(obj);
+     memset(s->irq_map, INTMATRIX_UNINT_VALUE, sizeof(s->irq_map));
++    memset(s->input_level, 0, sizeof(s->input_level));
+     for (int i = 0; i < ESP32S3_CPU_COUNT; ++i) {
+         if (s->outputs[i] == NULL) {
+             continue;
+diff --git a/include/hw/gpio/esp32_gpio.h b/include/hw/gpio/esp32_gpio.h
+index 163b41aa6b5aeb9f00e017a3fc78507e191799a6..1b6628ec1a820683c0dcca7206a87517363be6e5 100644
+--- a/include/hw/gpio/esp32_gpio.h
++++ b/include/hw/gpio/esp32_gpio.h
+@@ -20,6 +20,8 @@ typedef struct Esp32GpioState {
+     MemoryRegion iomem;
+     qemu_irq irq;
+     uint32_t strap_mode;
++    uint32_t regs[0x1000 / 4];
++    qemu_irq pins[49];
+ } Esp32GpioState;
+ 
+ typedef struct Esp32GpioClass {
+diff --git a/include/hw/misc/esp32c3_jtag.h b/include/hw/misc/esp32c3_jtag.h
+index 8ac6ebb5845371638fe4fc7d6fecfa0ccdcf8255..8089cde314d8e2c79f73b2f9c8be26674a369af6 100644
+--- a/include/hw/misc/esp32c3_jtag.h
++++ b/include/hw/misc/esp32c3_jtag.h
+@@ -12,6 +12,8 @@
+ #include "hw/hw.h"
+ #include "hw/sysbus.h"
+ #include "hw/registerfields.h"
++#include "chardev/char-fe.h"
++#include "qemu/timer.h"
+ 
+ #define TYPE_ESP32C3_JTAG "misc.esp32c3.usb_serial_jtag"
+ #define ESP32C3_JTAG(obj) OBJECT_CHECK(ESP32C3UsbJtagState, (obj), TYPE_ESP32C3_JTAG)
+@@ -22,5 +24,14 @@
+ typedef struct ESP32C3UsbJtagState {
+     SysBusDevice parent_object;
+     MemoryRegion iomem;
++    qemu_irq irq;
++    CharBackend chr;
++    QEMUTimer *poll_timer;
++    uint32_t regs[ESP32C3_JTAG_REGS_SIZE / 4];
++    uint8_t tx[64], rx[64];
++    unsigned tx_len, tx_offset, rx_len, rx_offset;
++    bool tx_ready, connected;
++    uint16_t frame_number;
++    uint32_t poll_us;
+ } ESP32C3UsbJtagState;
+ 
+diff --git a/include/hw/xtensa/esp32s3_intc.h b/include/hw/xtensa/esp32s3_intc.h
+index 5960b9d96090f4350ea3e91fc74919e4bbe39eec..85f05b3585c47ab4cab80968650fdf529d49d86e 100644
+--- a/include/hw/xtensa/esp32s3_intc.h
++++ b/include/hw/xtensa/esp32s3_intc.h
+@@ -142,6 +142,7 @@ typedef struct Esp32s3IntMatrixState {
+     MemoryRegion iomem;
+     qemu_irq *outputs[ESP32S3_CPU_COUNT];
+     uint8_t irq_map[ESP32S3_CPU_COUNT][ESP32S3_INT_MATRIX_INPUTS];
++    bool input_level[ESP32S3_INT_MATRIX_INPUTS];
+ 
+     /* properties */
+     XtensaCPU *cpu[ESP32S3_CPU_COUNT];
+diff --git a/hw/display/esp32s3_stick_lcd.c b/hw/display/esp32s3_stick_lcd.c
+new file mode 100644
+index 0000000..1782c07
+--- /dev/null
++++ b/hw/display/esp32s3_stick_lcd.c
+@@ -0,0 +1,293 @@
++/*
++ * StickS3 bring-up: ESP32-S3 GPSPI3 PIO and ST7789 logical controller RAM.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ * No DMA/bit-level PHY/gamma/scanout/migration fidelity is claimed.
++ */
++#include "qemu/osdep.h"
++#include "qemu/log.h"
++#include "qemu/module.h"
++#include "hw/irq.h"
++#include "hw/display/esp32s3_stick_lcd.h"
++
++#define SPI_CMD 0x00
++#define SPI_CLOCK 0x0c
++#define SPI_USER 0x10
++#define SPI_USER1 0x14
++#define SPI_USER2 0x18
++#define SPI_DLEN 0x1c
++#define SPI_MISC 0x20
++#define SPI_DMA_CONF 0x30
++#define SPI_INT_ENA 0x34
++#define SPI_INT_CLR 0x38
++#define SPI_INT_RAW 0x3c
++#define SPI_INT_ST 0x40
++#define SPI_INT_SET 0x44
++#define SPI_W0 0x98
++#define SPI_USR BIT(24)
++#define SPI_UPDATE BIT(23)
++#define TRANS_DONE BIT(12)
++#define TRANS_ERROR BIT(1)
++
++static void stick_irq(Esp32S3StickLCDState *s)
++{
++    qemu_set_irq(s->irq, !!(s->regs[SPI_INT_RAW / 4] & s->regs[SPI_INT_ENA / 4]));
++}
++
++static void panel_reset(Esp32S3StickLCDState *s)
++{
++    memset(s->ram, 0, sizeof(s->ram));
++    s->x0 = s->y0 = s->x = s->y = 0;
++    s->x1 = 239;
++    s->y1 = 319;
++    s->command = s->argc = s->madctl = 0;
++    s->colmod = 0x66;
++    s->sleep = true;
++    s->display_on = s->have_hi = false;
++    s->dirty = true;
++}
++
++static void panel_byte(Esp32S3StickLCDState *s, bool dc, uint8_t value)
++{
++    if (!s->reset_high) {
++        return;
++    }
++    if (!dc) {
++        s->command = value;
++        s->argc = 0;
++        s->have_hi = false;
++        switch (value) {
++        case 0x01: panel_reset(s); break;
++        case 0x10: s->sleep = true; break;
++        case 0x11: s->sleep = false; break;
++        case 0x28: s->display_on = false; break;
++        case 0x29: s->display_on = true; break;
++        case 0x2c: s->x = s->x0; s->y = s->y0; break;
++        default: break; /* power/gamma/inversion setup: not optical simulation */
++        }
++        s->dirty = true;
++        return;
++    }
++    if (s->command == 0x2c || s->command == 0x3c) {
++        unsigned x = s->x, y = s->y;
++        if (s->colmod != 0x55) {
++            qemu_log_mask(LOG_GUEST_ERROR, "stick-lcd: only RGB565 RAMWR is supported\n");
++            return;
++        }
++        if (!s->have_hi) {
++            s->pixel_hi = value;
++            s->have_hi = true;
++            return;
++        }
++        s->have_hi = false;
++        if (s->madctl & 0x20) {
++            unsigned tmp = x; x = y; y = tmp;
++        }
++        if (s->madctl & 0x40) { x = 239 - x; }
++        if (s->madctl & 0x80) { y = 319 - y; }
++        if (x < 240 && y < 320 && s->x0 <= s->x1 && s->y0 <= s->y1) {
++            uint16_t pixel = (s->pixel_hi << 8) | value;
++            if (s->madctl & 8) { /* BGR storage order */
++                pixel = ((pixel & 31) << 11) | (pixel & 0x7e0) | (pixel >> 11);
++            }
++            s->ram[y * 240 + x] = pixel;
++            s->dirty = true;
++        }
++        if (++s->x > s->x1) {
++            s->x = s->x0;
++            if (++s->y > s->y1) { s->y = s->y0; }
++        }
++        return;
++    }
++    if (s->argc < sizeof(s->args)) {
++        s->args[s->argc++] = value;
++    }
++    if ((s->command == 0x2a || s->command == 0x2b) && s->argc == 4) {
++        uint16_t start = (s->args[0] << 8) | s->args[1];
++        uint16_t end = (s->args[2] << 8) | s->args[3];
++        if (s->command == 0x2a) { s->x0 = start; s->x1 = end; }
++        else { s->y0 = start; s->y1 = end; }
++    } else if (s->command == 0x36 && s->argc == 1) {
++        s->madctl = value;
++        s->dirty = true;
++    } else if (s->command == 0x3a && s->argc == 1) {
++        s->colmod = value;
++    }
++}
++
++static void stick_update(void *opaque)
++{
++    Esp32S3StickLCDState *s = opaque;
++    unsigned w = (s->madctl & 0x20) ? 240 : 135;
++    unsigned h = (s->madctl & 0x20) ? 135 : 240;
++    DisplaySurface *surface;
++    if (!s->dirty) { return; }
++    qemu_console_resize(s->con, w, h);
++    surface = qemu_console_surface(s->con);
++    for (unsigned y = 0; y < h; y++) {
++        uint32_t *row = (uint32_t *)(surface_data(surface) + y * surface_stride(surface));
++        for (unsigned x = 0; x < w; x++) {
++            unsigned px = (s->madctl & 0x20) ? 52 + y : 52 + x;
++            unsigned py = (s->madctl & 0x20) ? 40 + x : 40 + y;
++            uint16_t c = (!s->sleep && s->display_on) ? s->ram[py * 240 + px] : 0;
++            row[x] = 0xff000000 | (((c >> 11) * 255 / 31) << 16) |
++                     ((((c >> 5) & 63) * 255 / 63) << 8) | ((c & 31) * 255 / 31);
++        }
++    }
++    dpy_gfx_update(s->con, 0, 0, w, h);
++    s->dirty = false;
++}
++
++static void stick_invalidate(void *opaque)
++{
++    Esp32S3StickLCDState *s = opaque;
++    s->dirty = true;
++}
++
++static const GraphicHwOps stick_graphics = {
++    .gfx_update = stick_update,
++    .invalidate = stick_invalidate,
++};
++
++static void stick_complete(void *opaque)
++{
++    Esp32S3StickLCDState *s = opaque;
++    if (s->pending_selected) {
++        for (unsigned i = 0; i < s->pending_len; i++) {
++            panel_byte(s, s->pending_dc, s->pending[i]);
++        }
++    }
++    s->regs[SPI_CMD / 4] &= ~SPI_USR;
++    s->regs[SPI_INT_RAW / 4] |= TRANS_DONE;
++    stick_irq(s);
++}
++
++static bool append_value(Esp32S3StickLCDState *s, uint32_t value, unsigned bits)
++{
++    if ((bits & 7) || bits > 32) { return false; }
++    for (unsigned n = bits / 8; n; n--) {
++        s->pending[s->pending_len++] = value >> ((n - 1) * 8);
++    }
++    return true;
++}
++
++static void stick_start(Esp32S3StickLCDState *s)
++{
++    uint32_t user = s->regs[SPI_USER / 4];
++    unsigned data_bits = (user & BIT(27)) ? (s->regs[SPI_DLEN / 4] & 0x3ffff) + 1 : 0;
++    unsigned command_bits = (user & BIT(31)) ? (s->regs[SPI_USER2 / 4] >> 28) + 1 : 0;
++    unsigned address_bits = (user & BIT(30)) ? (s->regs[SPI_USER1 / 4] >> 27) + 1 : 0;
++    unsigned dummy_bits = (user & BIT(29)) ? (s->regs[SPI_USER1 / 4] & 0xff) + 1 : 0;
++    uint32_t divider = s->regs[SPI_CLOCK / 4];
++    uint64_t cycles = (divider & BIT(31)) ? 1 :
++        (((divider >> 18) & 15) + 1) * (((divider >> 12) & 63) + 1);
++    s->pending_len = 0;
++    /* Reject unsupported modes visibly rather than pretending DMA/readback worked. */
++    if ((s->regs[SPI_DMA_CONF / 4] & (BIT(28) | BIT(27))) ||
++        (user & BIT(28)) || data_bits > 512 || (data_bits & 7) ||
++        (s->regs[0x08 / 4] & ((3u << 25) | 0x1ff60)) ||
++        !append_value(s, s->regs[SPI_USER2 / 4] & 0xffff, command_bits) ||
++        !append_value(s, s->regs[0x04 / 4], address_bits)) {
++        qemu_log_mask(LOG_UNIMP, "stick-lcd: unsupported SPI3 DMA/read/bit-order/length\n");
++        s->regs[SPI_CMD / 4] &= ~SPI_USR;
++        s->regs[SPI_INT_RAW / 4] |= TRANS_ERROR;
++        stick_irq(s);
++        return;
++    }
++    for (unsigned i = 0; i < data_bits / 8; i++) {
++        s->pending[s->pending_len++] = s->regs[SPI_W0 / 4 + i / 4] >> ((i % 4) * 8);
++    }
++    s->pending_dc = s->dc;
++    s->pending_selected = !(s->regs[SPI_MISC / 4] & 1) || !s->manual_cs;
++    s->regs[SPI_CMD / 4] = SPI_USR;
++    s->regs[SPI_INT_RAW / 4] &= ~TRANS_DONE;
++    /* 80MHz APB-clock assumption; SPI divider is guest-programmed. */
++    uint64_t ns = ((uint64_t)(data_bits + command_bits + address_bits + dummy_bits) * cycles * 1000000000 + 79999999) / 80000000;
++    timer_mod(s->done_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + MAX(ns, 1));
++    stick_irq(s);
++}
++
++static uint64_t stick_read(void *opaque, hwaddr addr, unsigned size)
++{
++    Esp32S3StickLCDState *s = opaque;
++    if (addr == SPI_INT_ST) { return s->regs[SPI_INT_RAW / 4] & s->regs[SPI_INT_ENA / 4]; }
++    return s->regs[addr / 4];
++}
++
++static void stick_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
++{
++    Esp32S3StickLCDState *s = opaque;
++    if (addr == SPI_CMD) {
++        if ((value & SPI_USR) && !(s->regs[SPI_CMD / 4] & SPI_USR)) { stick_start(s); }
++        return; /* SPI_UPDATE crosses the clock domain immediately in this model */
++    }
++    if (addr == SPI_INT_CLR) { s->regs[SPI_INT_RAW / 4] &= ~value; }
++    else if (addr == SPI_INT_SET) { s->regs[SPI_INT_RAW / 4] |= value; }
++    else if (addr != SPI_INT_ST) { s->regs[addr / 4] = value; }
++    stick_irq(s);
++}
++
++static const MemoryRegionOps stick_ops = {
++    .read = stick_read, .write = stick_write, .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4, .valid.max_access_size = 4,
++};
++
++static void stick_pin(void *opaque, int pin, int level)
++{
++    Esp32S3StickLCDState *s = opaque;
++    if (pin == 0) { s->dc = level; }
++    else if (pin == 1) {
++        if (!level && s->reset_high) { panel_reset(s); }
++        s->reset_high = level;
++    } else { s->manual_cs = level; }
++}
++
++static void stick_reset(Object *obj, ResetType type)
++{
++    Esp32S3StickLCDState *s = ESP32S3_STICK_LCD(obj);
++    timer_del(s->done_timer);
++    memset(s->regs, 0, sizeof(s->regs));
++    s->regs[SPI_CLOCK / 4] = (3 << 12) | (1 << 6) | 3;
++    s->reset_high = s->manual_cs = true;
++    s->dc = false;
++    panel_reset(s);
++}
++
++static void stick_realize(DeviceState *dev, Error **errp)
++{
++    Esp32S3StickLCDState *s = ESP32S3_STICK_LCD(dev);
++    s->con = graphic_console_init(dev, 0, &stick_graphics, s);
++    qemu_console_resize(s->con, 135, 240);
++}
++
++static void stick_init(Object *obj)
++{
++    Esp32S3StickLCDState *s = ESP32S3_STICK_LCD(obj);
++    memory_region_init_io(&s->iomem, obj, &stick_ops, s, TYPE_ESP32S3_STICK_LCD, 0x100);
++    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
++    sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq);
++    qdev_init_gpio_in(DEVICE(obj), stick_pin, 3);
++    s->done_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, stick_complete, s);
++    stick_reset(obj, RESET_TYPE_COLD);
++}
++
++static void stick_finalize(Object *obj)
++{
++    timer_free(ESP32S3_STICK_LCD(obj)->done_timer);
++}
++
++static void stick_class(ObjectClass *klass, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++    dc->realize = stick_realize;
++    dc->user_creatable = false;
++    RESETTABLE_CLASS(klass)->phases.hold = stick_reset;
++}
++
++static const TypeInfo stick_info = {
++    .name = TYPE_ESP32S3_STICK_LCD, .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(Esp32S3StickLCDState), .instance_init = stick_init,
++    .instance_finalize = stick_finalize, .class_init = stick_class,
++};
++
++static void stick_register(void) { type_register_static(&stick_info); }
++type_init(stick_register)
+diff --git a/include/hw/display/esp32s3_stick_lcd.h b/include/hw/display/esp32s3_stick_lcd.h
+new file mode 100644
+index 0000000..51f72ef
+--- /dev/null
++++ b/include/hw/display/esp32s3_stick_lcd.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include "hw/sysbus.h"
++#include "ui/console.h"
++#include "qemu/timer.h"
++
++#define TYPE_ESP32S3_STICK_LCD "esp32s3.stick-spi-lcd"
++#define ESP32S3_STICK_LCD(obj) OBJECT_CHECK(Esp32S3StickLCDState, (obj), TYPE_ESP32S3_STICK_LCD)
++
++typedef struct Esp32S3StickLCDState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    qemu_irq irq;
++    QemuConsole *con;
++    QEMUTimer *done_timer;
++    uint32_t regs[64];
++    uint8_t pending[72]; /* optional command/address plus 64-byte PIO FIFO */
++    unsigned pending_len;
++    bool pending_dc, pending_selected;
++    bool dc, reset_high, manual_cs;
++    uint16_t ram[240 * 320];
++    uint16_t x0, x1, y0, y1, x, y;
++    uint8_t command, args[16], argc, madctl, colmod, pixel_hi;
++    bool sleep, display_on, have_hi, dirty;
++} Esp32S3StickLCDState;

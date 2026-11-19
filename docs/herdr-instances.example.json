@@ -1,0 +1,14 @@
+{
+  "cli": true,
+  "native": [
+    {
+      "id": "quake",
+      "home": "~/.config/herdr-quake",
+      "session": "quake-native",
+      "app": "~/.local/opt/herdr-quake/app/herdr-app",
+      "core": "~/.local/opt/herdr-quake/core/herdr-core",
+      "workspace": "herdr-native",
+      "app_id": "org.omarchy.herdr-quake"
+    }
+  ]
+}

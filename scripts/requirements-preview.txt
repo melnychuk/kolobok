@@ -1,0 +1,2 @@
+# Optional local visual-development tool, not a bridge/ASR runtime dependency.
+Pillow==12.1.1

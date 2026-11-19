@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Copilot Stick S3: a tiny face for your agents</title>
+  <meta name="description" content="An M5Stack StickS3 desk buddy that shows when your GitHub Copilot CLI and Herdr agents are working, need you, or are done.">
+  <meta name="theme-color" content="#07080f">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600;800&family=Montserrat:wght@300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="modulepreload" href="js/avatar.js">
+  <link rel="modulepreload" href="js/intro.js">
+  <link rel="preload" href="avatar.wasm" as="fetch" type="application/wasm" crossorigin>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="#top">
+      <span class="brand-face" aria-hidden="true"><i></i><i></i></span>
+      Copilot Stick S3
+    </a>
+    <nav>
+      <a href="#play">Playground</a>
+      <a href="#how">How it works</a>
+      <a href="#setup" class="pill">Set it up</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- The device stays pinned while chapters scroll past it. -->
+    <div class="story">
+      <div class="stage intro" id="stage">
+        <div class="glow" aria-hidden="true"></div>
+        <div id="canvas-host" class="canvas-host">
+          <canvas id="flat-screen" width="240" height="135" aria-hidden="true"></canvas>
+        </div>
+        <div class="loading" aria-hidden="true"><span></span><span></span></div>
+        <script type="module" src="js/intro.js"></script>
+        <p id="stage-error" class="stage-error" role="alert"></p>
+        <div class="now" aria-live="polite">
+          <span class="pulse"></span>
+          <span id="hud-mode">Booting</span>
+          <span class="sep">·</span>
+          <span id="hud-clip" class="clip-name">…</span>
+        </div>
+        <ol class="dots" id="dots" aria-label="Chapters"></ol>
+      </div>
+
+      <div class="chapters">
+        <section class="chapter intro" data-chapter="intro" aria-label="Hello">
+          <a class="nod" href="#hero" aria-label="Scroll to meet it">
+            <span>scroll</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+        </section>
+
+        <section class="chapter left hero" id="hero" data-chapter="hero">
+          <div class="card">
+            <p class="eyebrow"><span class="dot"></span> M5Stack StickS3 · Copilot CLI · Herdr</p>
+            <h1>Your agents,<br><span class="squiggle">with a face.</span></h1>
+            <p class="lead">A tiny desk buddy that shows what your coding agents are up to, at a glance.</p>
+            <p class="realdeal"><span class="chip">not a video</span> That's the real firmware renderer, compiled to WebAssembly and living in the stick.</p>
+          </div>
+        </section>
+
+        <section class="chapter right" data-chapter="arrive">
+          <div class="card">
+            <span class="kicker k-blue">New task</span>
+            <h2>Work drops in. Literally.</h2>
+            <p>A numeral teeters at the edge, falls with speed lines, and the face jumps out of the way. Counted in Roman numerals, naturally.</p>
+          </div>
+        </section>
+
+        <section class="chapter left" data-chapter="think">
+          <div class="card">
+            <span class="kicker k-blue">Working</span>
+            <h2>It thinks while they work.</h2>
+            <p>Blue means busy. Nine hand-authored ways of thinking: recall, compare, read and scan, verify a hunch… <em>aha!</em></p>
+            <p class="tiny">Eyes lead; the body follows 90&nbsp;ms later.</p>
+          </div>
+        </section>
+
+        <section class="chapter right" data-chapter="finish">
+          <div class="card">
+            <span class="kicker k-green">Finished</span>
+            <h2>Done? It carries it over.</h2>
+            <p>The finished task charges from blue to green, bursts, flips onto the done side, and the face hops home. Every finish gets a moment.</p>
+          </div>
+        </section>
+
+        <section class="chapter left" data-chapter="sort">
+          <div class="card">
+            <span class="kicker k-green">Another one</span>
+            <h2>Both hands full.</h2>
+            <p>Once both counts are on screen, it sorts them itself: two soft blobs droop from its body, scoop up both numerals, swap them mid-air and set them back down. One less active, one more done.</p>
+            <p class="tiny">Blobs, not arms. Arms were too human.</p>
+          </div>
+        </section>
+
+        <section class="chapter right" data-chapter="needs">
+          <div class="card">
+            <span class="kicker k-yellow">Needs you</span>
+            <h2>It looks up when they need you.</h2>
+            <p>A yellow band, a bobbing <b>!</b> and one polite C6→G6 chime. Tap the blue key and the bridge focuses that session.</p>
+          </div>
+        </section>
+
+        <section class="chapter left" data-chapter="talk">
+          <div class="card">
+            <span class="kicker k-lilac">Push to talk</span>
+            <h2>Hold the key. Say the thing.</h2>
+            <p>Its eyes turn into a soundwave that dances with your voice while you dictate into your agent. Transcription stays on your machine. Let go, and it nods.</p>
+            <p class="tiny">Try it: hold <kbd>Space</kbd>, or press the blue key.</p>
+          </div>
+        </section>
+
+        <section class="chapter right" data-chapter="sleep">
+          <div class="card">
+            <span class="kicker k-slate">Idle</span>
+            <h2>Nothing to do? It naps.</h2>
+            <p>Open the last finished task and it steps right over the green instead of letting it fade. A few quiet seconds later it dozes off. Unplugged, the panel sleeps too; a press lets it peek.</p>
+          </div>
+        </section>
+
+        <section class="chapter left" data-chapter="anatomy">
+          <div class="card">
+            <span class="kicker k-sky">Anatomy</span>
+            <h2>48 × 24 × 15 mm of personality.</h2>
+            <ul class="specs">
+              <li><b>ESP32-S3</b> renders every pixel, ~30 fps</li>
+              <li><b>1.14″ IPS</b> 240×135, dithered gradients</li>
+              <li><b>BMI270</b> flips the face when you turn it</li>
+              <li><b>ES8311 + speaker + mic</b> chime &amp; dictation</li>
+              <li><b>250 mAh</b> naps the panel when unplugged</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="chapter right play" id="play" data-chapter="play">
+          <div class="card panel">
+            <span class="kicker k-yellow">Playground</span>
+            <h2>Your turn.</h2>
+            <p class="tiny">Drag to spin it. Press the blue key (hold to talk).</p>
+
+            <div class="dock">
+              <div class="counter c-done">
+                <span class="label">Done</span>
+                <button id="done-minus" aria-label="Fewer done">−</button>
+                <output id="done-value">I</output>
+                <button id="done-plus" aria-label="More done">+</button>
+              </div>
+              <div class="counter c-active">
+                <span class="label">Active</span>
+                <button id="active-minus" aria-label="Fewer active">−</button>
+                <output id="active-value">II</output>
+                <button id="active-plus" aria-label="More active">+</button>
+              </div>
+              <button class="toggle t-needs" id="toggle-blocked" aria-pressed="false">Needs you</button>
+              <button class="toggle t-bridge" id="toggle-healthy" aria-pressed="true">Bridge</button>
+            </div>
+            <div class="dock">
+              <button data-scene="arrive">＋ New task</button>
+              <button data-scene="finish">✓ Finish one</button>
+              <button data-scene="step">Open last</button>
+              <button id="btn-tap">Tap key</button>
+              <button id="btn-hold" class="hold">Hold to talk</button>
+              <button id="btn-clap">👏 Clap</button>
+              <button id="btn-flip">↻ Flip</button>
+              <button id="btn-blueprint" aria-pressed="false">Blueprint</button>
+              <button id="btn-sound" aria-pressed="true" title="Attention chime">🔔</button>
+            </div>
+
+            <div class="tabs" id="library-tabs" role="tablist" aria-label="Performances"></div>
+            <div class="clips" id="library"></div>
+            <div class="swatches" id="swatches" role="group" aria-label="Shell color"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <section id="how" class="wide">
+      <h2>How it works</h2>
+      <p class="sub">No cloud, no accounts. A small Python bridge on your machine watches your agent sessions and pushes a status line over USB serial.</p>
+      <ol class="flow">
+        <li><span class="step">1</span><strong>Your agents</strong><span>Copilot CLI sessions (auto-discovered) and native Herdr instances (registered), on Linux or macOS.</span></li>
+        <li><span class="step">2</span><strong>The bridge</strong><span>Counts active, waiting and finished turns from unmatched turn/tool events. Metadata never fakes “busy”.</span></li>
+        <li><span class="step">3</span><strong>USB serial</strong><span>Binary frames: status down; key taps, focus requests and push-to-talk audio up.</span></li>
+        <li><span class="step">4</span><strong>The stick</strong><span>Renders the face in software with a fixed-step spring rim and a CPU “shader” fluid field.</span></li>
+      </ol>
+    </section>
+
+    <section id="setup" class="wide">
+      <h2>Set it up</h2>
+      <div class="setup" data-tabs>
+        <div class="tabs" role="tablist">
+          <button role="tab" aria-selected="true" data-target="linux">Linux / Herdr</button>
+          <button role="tab" aria-selected="false" data-target="mac">macOS / Herdr</button>
+          <button role="tab" aria-selected="false" data-target="flash">Flash firmware</button>
+        </div>
+        <div data-panel="linux">
+          <p>Python bridge plus the Herdr task helper from the Agents panel plugin. Local CPU dictation, USB permissions and running it as a service: <code>docs/linux-herdr.md</code>.</p>
+<pre data-copy><code>python3 -m venv .venv
+.venv/bin/pip install sherpa-onnx==1.13.8 numpy==2.5.3
+export STICK_S3_HERDR_HELPER=/path/to/herdr_tasks.py
+.venv/bin/python bridge/herdr_bridge.py --once   # status preview, no USB
+.venv/bin/python bridge/herdr_bridge.py
+
+# Recommended: watch CLI and native Herdr together
+mkdir -p ~/.config/stick-s3
+cp -n docs/herdr-instances.example.json ~/.config/stick-s3/herdr.json</code></pre>
+        </div>
+        <div data-panel="mac" hidden>
+          <p>USB status and short-press focus for Herdr (including Pi). See <code>docs/macos-herdr.md</code>.</p>
+<pre data-copy><code># check the snapshot first (no USB)
+python3 bridge/macos_herdr_bridge.py --session default --once
+
+# then run it against your Stick
+python3 bridge/macos_herdr_bridge.py --session default --port /dev/cu.usbmodem&lt;port&gt;</code></pre>
+        </div>
+        <div data-panel="flash" hidden>
+          <p>Arduino CLI with the M5Stack ESP32 core. If upload won't start, hold the side power key ~2s until the green LED blinks.</p>
+<pre data-copy><code>arduino-cli core install m5stack:esp32 \
+  --additional-urls https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
+arduino-cli lib install M5Unified
+arduino-cli compile --fqbn m5stack:esp32:m5stack_sticks3 firmware
+arduino-cli upload  --fqbn m5stack:esp32:m5stack_sticks3 --port /dev/cu.usbmodem&lt;port&gt; firmware</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p><span class="brand-face small" aria-hidden="true"><i></i><i></i></span> Copilot Stick S3 · a side project on M5Stack StickS3.</p>
+    <p class="fine">The screen runs <code>firmware/*.h</code> via <code>scripts/build-site-wasm.sh</code>. Shell modelled from M5Stack product photos.</p>
+  </footer>
+
+  <div id="toast" class="toast" role="status"></div>
+</body>
+</html>
