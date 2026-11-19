@@ -114,9 +114,19 @@ body::after {
 .chapter.play { min-height: 120vh; }
 .card {
   pointer-events: auto; max-width: 400px;
-  opacity: var(--reveal); transform: translateY(calc((1 - var(--reveal)) * 30px));
+  opacity: var(--reveal);
   transition: opacity .15s linear;
 }
+/* Apple-style staggered entrance (their StaggeredFadeIn): when a chapter
+   comes into view its copy fades in and rises, one element after another,
+   on a clock rather than scrubbed by scroll; then it stays solid. js/main.js
+   adds .entered and each child's --i. Without that script nothing hides. */
+.js-chapters .chapter:not(.scene) .card > * {
+  opacity: 0; transform: translateY(30px);
+  transition: opacity .9s ease, transform .7s cubic-bezier(.2, .7, .2, 1);
+  transition-delay: calc(var(--i, 0) * .15s);
+}
+.js-chapters .chapter.entered:not(.scene) .card > * { opacity: 1; transform: none; }
 .chapter:not(.is-active) .card { pointer-events: none; }
 .chapter.right .card { margin-right: clamp(0px, 3vw, 40px); }
 .card h2 { font-size: clamp(34px, 3.6vw, 54px); line-height: 1; letter-spacing: -.035em; margin: 14px 0 14px; font-weight: 800; }
@@ -149,10 +159,20 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 .no-video .cut, .no-video .strike { fill: none; stroke-linecap: round; }
 .no-video .cut { stroke: var(--bg); stroke-width: 6; }  /* gap where the strike crosses the frame */
 .no-video .strike { stroke: var(--yellow); stroke-width: 2.6; }
-/* intro: only the face; a small nod at the bottom says "scroll" */
-.chapter.intro { min-height: 100vh; min-height: 100svh; justify-content: center; align-items: flex-end; padding-bottom: 30px; }
+/* Opening scene: a pinned frame scrubbed by scroll progress (see js/main.js).
+   The section is the scroll length; the sticky frame lays the card out
+   exactly like a regular chapter, so the final pose needs no transform. */
+.chapter.scene { --scene-scroll: 110vh; display: block; padding: 0; min-height: 0; height: calc(100vh + var(--scene-scroll)); height: calc(100svh + var(--scene-scroll)); }
+.scene-pin { position: sticky; top: 0; height: 100vh; height: 100svh; display: flex; align-items: center; padding: 90px clamp(20px, 6vw, 96px); }
+.hero h1 { width: fit-content; }
+/* The title waits for the face to wake (js/intro.js removes .sleepy). It uses
+   the separate `translate` property: scroll keyframes own `transform`. */
+.hero h1 { transition: opacity 1.3s cubic-bezier(.3, .6, .3, 1), translate 1.5s cubic-bezier(.2, .7, .2, 1); }
+.sleepy .hero h1 { opacity: 0; translate: 0 16px; }
+/* "scroll" tip at the bottom of the opening; fades as soon as it plays. */
 .nod {
-  pointer-events: auto; opacity: clamp(0, calc(var(--reveal) * 2.2 - 1.2), 1);
+  position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); z-index: 1;
+  pointer-events: auto; opacity: var(--tip, 1);
   display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
   color: var(--muted); text-decoration: none; font: 12px var(--mono); letter-spacing: .14em;
 }
@@ -264,7 +284,10 @@ footer p { margin: 0; }
   .card p { font-size: 16px; }
   h1 { font-size: 46px; margin-bottom: 12px; }
   .eyebrow { font-size: 10.5px; margin-bottom: 12px; padding: 4px 12px 4px 9px; gap: 7px; border-radius: 12px; }
-  .chapter.intro { padding-bottom: 26px; }
+  .scene-pin { justify-content: center; align-items: flex-end; padding: 0 18px 92px; }
+  .nod { bottom: 26px; }
+  /* The centred heading floats alone; the panel is scrubbed in with the rest. */
+  .hero .card { background: rgb(11 13 24 / calc(.85 * var(--chrome, 1))); border-color: rgb(255 255 255 / calc(.1 * var(--chrome, 1))); backdrop-filter: blur(calc(14px * var(--chrome, 1))); }
   .specs li { padding: 7px 10px; font-size: 14px; }
   .now { bottom: auto; top: 64px; font-size: 13px; padding: 6px 12px; }
   .dots { display: none; }
@@ -285,6 +308,6 @@ footer p { margin: 0; }
 }
 @media (max-width: 520px) { .flow { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; }
+  *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; transition-delay: 0s !important; }
   html { scroll-behavior: auto; }
 }

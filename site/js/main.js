@@ -1,6 +1,6 @@
 import { loadAvatar, STATES } from "./avatar.js";
 import { SHELLS } from "./device.js";
-import { SCREEN, WAKE_AT, WAKE_FROM, WAKE_MS, introDist, narrow } from "./intro.js";
+import { SCREEN, WAKE_AT, WAKE_FROM, WAKE_MS, introDist, introLift, introScreenBottom, narrow, showTitle } from "./intro.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -63,6 +63,7 @@ async function main() {
     avatar = await loadAvatar(new URL("../avatar.wasm", import.meta.url));
   } catch (error) {
     stage.classList.add("failed");
+    showTitle();
     $("#stage-error").textContent = `Couldn't load the firmware renderer (${error.message}).`;
     throw error;
   }
@@ -184,11 +185,6 @@ async function main() {
   // `reveal` fades the shell in around the face (0 = only the eyes on the page).
   // `awake` holds idle-awake with no tasks; otherwise it dozes after ~4s.
   const CHAPTERS = {
-    intro: {
-      pose: { az: 0, el: 0, dist: introDist(), tx: SCREEN.x, ty: 0, exposure: 1.05, reveal: 0 },
-      awake: true,
-      enter() { calm({ active: 0, done: 0 }); },
-    },
     hero: {
       pose: { az: -20, el: 9, dist: 178, tx: 0, ty: 0, exposure: 1.05, reveal: 1 },
       awake: true,
@@ -300,17 +296,94 @@ async function main() {
     const b = document.createElement("button");
     b.setAttribute("aria-label", section.querySelector("h1,h2")?.textContent ?? section.getAttribute("aria-label") ?? names[i]);
     b.title = b.getAttribute("aria-label");
-    b.onclick = () => section.scrollIntoView({ behavior: "smooth", block: "center" });
+    // A pinned scene settles at its end; other chapters at their centre.
+    b.onclick = () => section.classList.contains("scene")
+      ? scrollTo({ top: section.offsetTop + section.offsetHeight - innerHeight, behavior: "smooth" })
+      : section.scrollIntoView({ behavior: "smooth", block: "center" });
     li.append(b);
     dots.append(li);
   });
 
   // Screen-space placement: beside the copy on wide screens, above it on phones.
   const shift = (section) => {
-    if (section.dataset.chapter === "intro") return { sx: 0, sy: 0, dist: introDist() };
     if (narrow()) return { sx: 0, sy: section.dataset.chapter === "play" ? 0.3 : 0.2 };
     return { sx: section.classList.contains("left") ? 0.19 : -0.19, sy: 0 };
   };
+
+  // --- Opening scene ---------------------------------------------------------
+  // Like Apple's product pages: the section is pinned while one scroll
+  // progress value drives staggered keyframes. The heading starts alone under
+  // the intro eyes and glides beside the stick; the shell appears only after
+  // the face has passed it, then the rest of the copy rises in and holds.
+  // Text and camera follow the same smoothed progress, so they stay locked.
+  const hero = $("#hero");
+  const pin = $(".scene-pin", hero);
+  const tip = $(".nod", hero);
+  const heroCard = $(".card", hero);
+  const heroTitle = $("h1", hero);
+  const heroRest = [...heroCard.children].filter((el) => el !== heroTitle);
+  const introPose = () => ({ az: 0, el: 0, dist: introDist(), tx: SCREEN.x, ty: 0, exposure: 1.05, reveal: 0, sx: 0, sy: introLift() });
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+  const span = (p, a, b) => clamp01((p - a) / (b - a));
+  const inOutQuad = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+  const outQuad = (t) => 1 - (1 - t) * (1 - t);
+  const SCENE = { move: [0.03, 0.55], shell: [0.3, 0.7], rest: 0.42, stagger: 0.06, fade: 0.22 };
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const scene = { target: 0, shown: -1, offset: { x: 0, y: 0 }, last: 0 };
+  const sceneProgress = () =>
+    clamp01((scrollY - hero.offsetTop) / Math.max(1, hero.offsetHeight - innerHeight));
+  // The camera pose at progress p (before the hero -> next chapter blend).
+  function scenePose(p) {
+    const a = introPose();
+    const b = { ...CHAPTERS.hero.pose, ...shift(hero) };
+    const m = inOutQuad(span(p, ...SCENE.move));
+    const pose = {};
+    for (const key of Object.keys(b)) pose[key] = a[key] + (b[key] - a[key]) * m;
+    pose.reveal = inOutQuad(span(p, ...SCENE.shell));
+    return pose;
+  }
+  function drawScene(p) {
+    // Heading: from centred under the eyes to its laid-out place (measured
+    // without our own transform; the pinned frame never scrolls meanwhile).
+    const r = heroTitle.getBoundingClientRect();
+    const x = r.left - scene.offset.x, y = r.top - scene.offset.y;
+    const pinTop = pin.getBoundingClientRect().top;
+    const dx = (document.documentElement.clientWidth - r.width) / 2 - x;
+    const dy = pinTop + introScreenBottom(stage) + Math.min(56, innerHeight * 0.06) - y;
+    const away = 1 - inOutQuad(span(p, ...SCENE.move));
+    scene.offset = { x: away * dx, y: away * dy };
+    heroTitle.style.transform = `translate(${scene.offset.x.toFixed(2)}px, ${scene.offset.y.toFixed(2)}px)`;
+    // The rest rises in, one element after another.
+    heroRest.forEach((el, n) => {
+      const u = outQuad(span(p, SCENE.rest + n * SCENE.stagger, SCENE.rest + n * SCENE.stagger + SCENE.fade));
+      el.style.opacity = u.toFixed(3);
+      el.style.transform = u < 1 ? `translateY(${((1 - u) * 24).toFixed(2)}px)` : "";
+      el.style.pointerEvents = u < 0.5 ? "none" : "";
+    });
+    heroCard.style.setProperty("--chrome", outQuad(span(p, SCENE.rest - 0.04, SCENE.rest + SCENE.fade)).toFixed(3));
+    const tipLeft = 1 - span(p, 0, 0.08);
+    tip.style.setProperty("--tip", tipLeft.toFixed(3));
+    tip.style.visibility = tipLeft > 0 ? "" : "hidden";
+  }
+  // The tip plays the whole opening: land where it has settled.
+  tip.addEventListener("click", (event) => {
+    event.preventDefault();
+    scrollTo({ top: hero.offsetTop + hero.offsetHeight - innerHeight, behavior: reduceMotion ? "auto" : "smooth" });
+  });
+  // Per frame: ease the shown progress toward the scroll (Apple's keyframe
+  // `ease`), then draw the copy and pose the camera from the same value.
+  function stepScene(now) {
+    const dt = Math.min(0.1, Math.max(0, (now - (scene.last || now)) / 1000));
+    scene.last = now;
+    scene.target = sceneProgress();
+    const k = reduceMotion || scene.shown < 0 ? 1 : 1 - Math.exp(-dt / 0.07);
+    const next = scene.shown < 0 ? scene.target : scene.shown + (scene.target - scene.shown) * k;
+    const settled = Math.abs(scene.target - next) < 1e-4 ? scene.target : next;
+    if (settled === scene.shown) return;
+    scene.shown = settled;
+    drawScene(settled);
+    onScroll();
+  }
 
   let active = -1;
   let pending = -1;
@@ -330,26 +403,38 @@ async function main() {
 
   // Continuous chapter position from section centres; the camera blends
   // between neighbouring poses while the avatar switches at the midpoint.
-  const ease = (t) => t * t * (3 - 2 * t);
+  // Like Apple's pages, things rest between transitions: the camera holds its
+  // chapter pose for the middle of each chapter and moves only in between.
+  const HOLD = 0.22; // fraction of the centre-to-centre distance held at each end
+  // Copy enters once (staggered, see .entered in styles.css) when its chapter
+  // is this close, and fades only once it is well past.
+  const ENTER = 0.6;
+  document.documentElement.classList.add("js-chapters");
+  sections.forEach((s) => [...($(".card", s)?.children ?? [])].forEach((el, n) => el.style.setProperty("--i", n)));
   function onScroll() {
     const mid = scrollY + innerHeight / 2;
-    const centres = sections.map((s) => s.offsetTop + s.offsetHeight / 2);
+    // A pinned scene settles when its pin releases; other chapters at centre.
+    const centres = sections.map((s) => s.offsetTop +
+      (s.classList.contains("scene") ? s.offsetHeight - innerHeight / 2 : s.offsetHeight / 2));
     let i = 0;
     while (i < centres.length - 1 && mid > centres[i + 1]) i++;
     const last = i === centres.length - 1;
     const t = last ? 0 : Math.max(0, Math.min(1, (mid - centres[i]) / Math.max(1, centres[i + 1] - centres[i])));
     const j = Math.min(i + 1, sections.length - 1);
-    const a = { ...CHAPTERS[names[i]].pose, ...shift(sections[i]) };
+    const inScene = sections[i] === hero && t === 0;
+    const a = sections[i] === hero ? scenePose(Math.max(0, scene.shown)) : { ...CHAPTERS[names[i]].pose, ...shift(sections[i]) };
     const b = { ...CHAPTERS[names[j]].pose, ...shift(sections[j]) };
-    const k = ease(t);
+    const k = inOutQuad(span(t, HOLD, 1 - HOLD));
     const pose = {};
     for (const key of Object.keys(a)) pose[key] = a[key] + (b[key] - a[key]) * k;
-    device.setPose(pose);
+    // In the scene the camera follows the same eased progress as the copy.
+    device.setPose(pose, false, inScene ? 0.5 : undefined);
     stage.classList.toggle("intro", pose.reveal < 0.5);
     // Fade copy by distance from its chapter.
     sections.forEach((s, n) => {
       const d = Math.abs(n - (i + t));
-      s.style.setProperty("--reveal", Math.max(0, 1 - d * 1.5).toFixed(3));
+      s.style.setProperty("--reveal", (1 - span(d, 0.28, 0.62)).toFixed(3));
+      if (d < ENTER) s.classList.add("entered");
     });
     // Debounce chapter switches so a fast fling doesn't churn the avatar.
     const next = t < 0.5 ? i : j;
@@ -361,7 +446,12 @@ async function main() {
   }
   addEventListener("scroll", onScroll, { passive: true });
   addEventListener("resize", onScroll);
+  scene.target = scene.shown = sceneProgress();
+  drawScene(scene.shown);
   onScroll();
+  // The heading's width depends on the web font: re-measure once it loads.
+  document.fonts?.ready.then(() => { drawScene(scene.shown); onScroll(); });
+  addEventListener("resize", () => drawScene(scene.shown));
   device.setPose({}, true);
 
   // --- Playground controls -------------------------------------------------
@@ -491,6 +581,10 @@ async function main() {
     revealed = true;
     stage.classList.add("ready");
     device.wakeZoom?.(WAKE_FROM, WAKE_MS);
+    // The title arrives with the face: it starts fading in a little before
+    // the eyes open and finishes as the dolly settles (see .sleepy in CSS).
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(showTitle, reduced ? 0 : WAKE_MS * WAKE_AT - 450);
     setTimeout(() => {
       sleepy = false;
       avatar.awake = !!CHAPTERS[names[active]]?.awake;
@@ -499,6 +593,7 @@ async function main() {
   function loop(now) {
     requestAnimationFrame(loop);
     if (!visible || document.hidden) return;
+    stepScene(now);
     avatar.tick(now);
     hud();
     device.render(now);

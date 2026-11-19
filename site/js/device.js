@@ -648,8 +648,11 @@ export class Device {
   setGlow(hex) { this.glowTarget.set(hex); }
   flip() { this.flipped = !this.flipped; }
   // Scroll choreography target; drag offsets ease home unless `sticky`.
-  setPose(pose, snap = false) {
+  // `follow` is the per-frame catch-up (default lazy 0.075); a scroll scene
+  // whose progress is already eased passes a quick one to stay in step.
+  setPose(pose, snap = false, follow = 0.075) {
     Object.assign(this.pose, pose);
+    this.follow = follow;
     if (snap || this.reduceMotion) this.snapNext = true;
   }
   setStickyDrag(on) { this.drag.sticky = on; }
@@ -687,7 +690,7 @@ export class Device {
   }
 
   #updateCamera(now) {
-    const k = this.snapNext ? 1 : 0.075;
+    const k = this.snapNext ? 1 : this.follow ?? 0.075;
     this.snapNext = false;
     for (const key of Object.keys(this.pose)) this.view[key] = damp(this.view[key], this.pose[key], k);
     if (!this.drag.active && !this.drag.sticky) {
