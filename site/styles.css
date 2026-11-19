@@ -121,12 +121,20 @@ body::after {
    comes into view its copy fades in and rises, one element after another,
    on a clock rather than scrubbed by scroll; then it stays solid. js/main.js
    adds .entered and each child's --i. Without that script nothing hides. */
-.js-chapters .chapter:not(.scene) .card > * {
+.js-chapters .chapter:not(.scene):not(.pinned) .card > * {
   opacity: 0; transform: translateY(30px);
   transition: opacity .9s ease, transform .7s cubic-bezier(.2, .7, .2, 1);
   transition-delay: calc(var(--i, 0) * .15s);
 }
-.js-chapters .chapter.entered:not(.scene) .card > * { opacity: 1; transform: none; }
+.js-chapters .chapter.entered:not(.scene):not(.pinned) .card > * { opacity: 1; transform: none; }
+/* Pinned chapters (js/main.js): the copy holds its place on screen while the
+   chapter scrolls by, and crossfades with its neighbours on one timeline.
+   The section is just scroll length. `translate` centres it; the script owns
+   `transform` and opacity. */
+.js-chapters .chapter.pinned { min-height: 130vh; }
+.js-chapters .chapter.pinned .card { position: fixed; top: 50%; translate: 0 -50%; transition: none; visibility: hidden; opacity: 0; }
+.js-chapters .chapter.left.pinned .card { left: clamp(20px, 6vw, 96px); }
+.js-chapters .chapter.right.pinned .card { right: calc(clamp(20px, 6vw, 96px) + clamp(0px, 3vw, 40px)); margin-right: 0; }
 .chapter:not(.is-active) .card { pointer-events: none; }
 .chapter.right .card { margin-right: clamp(0px, 3vw, 40px); }
 .card h2 { font-size: clamp(34px, 3.6vw, 54px); line-height: 1; letter-spacing: -.035em; margin: 14px 0 14px; font-weight: 800; }
@@ -286,6 +294,10 @@ footer p { margin: 0; }
   .eyebrow { font-size: 10.5px; margin-bottom: 12px; padding: 4px 12px 4px 9px; gap: 7px; border-radius: 12px; }
   .scene-pin { justify-content: center; align-items: flex-end; padding: 0 18px 92px; }
   .nod { bottom: 26px; }
+  .js-chapters .chapter.pinned { min-height: 130svh; }
+  .js-chapters .chapter.left.pinned .card, .js-chapters .chapter.right.pinned .card {
+    top: auto; bottom: 92px; left: 18px; right: 18px; translate: none; margin: 0 auto;
+  }
   /* The centred heading floats alone; the panel is scrubbed in with the rest. */
   .hero .card { background: rgb(11 13 24 / calc(.85 * var(--chrome, 1))); border-color: rgb(255 255 255 / calc(.1 * var(--chrome, 1))); backdrop-filter: blur(calc(14px * var(--chrome, 1))); }
   .specs li { padding: 7px 10px; font-size: 14px; }

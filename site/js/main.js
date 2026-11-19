@@ -403,14 +403,52 @@ async function main() {
 
   // Continuous chapter position from section centres; the camera blends
   // between neighbouring poses while the avatar switches at the midpoint.
-  // Like Apple's pages, things rest between transitions: the camera holds its
-  // chapter pose for the middle of each chapter and moves only in between.
-  const HOLD = 0.22; // fraction of the centre-to-centre distance held at each end
-  // Copy enters once (staggered, see .entered in styles.css) when its chapter
-  // is this close, and fades only once it is well past.
-  const ENTER = 0.6;
+  // Like Apple's pinned scenes, each chapter's copy stays put on screen
+  // (.pinned: fixed, see styles.css) and rests for a few beats around its
+  // centre; between chapters one scrubbed timeline crossfades it. Times are
+  // fractions of the way from one chapter centre to the next:
+  const MOVE = [0.12, 0.55]; // the stick glides to the next pose
+  const OUT = [0.08, 0.4]; // old copy fades and lifts away before the stick arrives
+  const OUT_WIDE = [0.04, 0.3]; // the wider opening copy clears out sooner
+  const IN = 0.34, STAGGER = 0.045, FADE = 0.25; // new copy rises in after the stick has left
+  const LIFT = 30; // px of copy travel, like Apple's short text moves
+  // The opening is its own scene; the interactive playground keeps flowing
+  // (it hands over to the rest of the page), entering once like Apple's
+  // StaggeredFadeIn (.entered in styles.css).
+  const ENTER = 0.72;
   document.documentElement.classList.add("js-chapters");
-  sections.forEach((s) => [...($(".card", s)?.children ?? [])].forEach((el, n) => el.style.setProperty("--i", n)));
+  sections.forEach((s) => {
+    if (!s.classList.contains("scene") && s.dataset.chapter !== "play") s.classList.add("pinned");
+    [...($(".card", s)?.children ?? [])].forEach((el, n) => el.style.setProperty("--i", n));
+  });
+  // x: continuous chapter position (n = resting on chapter n).
+  function pinnedCopy(s, n, x) {
+    const card = $(".card", s);
+    const kids = [...card.children];
+    const e = x - n;
+    let shown = 0;
+    if (e >= 0) {
+      // Leaving: the whole card fades and lifts together.
+      const u = inOutQuad(span(e, ...OUT));
+      shown = 1 - u;
+      card.style.opacity = shown.toFixed(3);
+      card.style.transform = u > 0 ? `translateY(${(-LIFT * u).toFixed(2)}px)` : "";
+      kids.forEach((el) => { el.style.opacity = ""; el.style.transform = ""; });
+    } else {
+      // Arriving: the panel first, then each element rises in turn.
+      const into = 1 + e;
+      shown = outQuad(span(into, IN - 0.02, IN + FADE * 0.6));
+      card.style.opacity = shown.toFixed(3);
+      card.style.transform = "";
+      kids.forEach((el, c) => {
+        const u = outQuad(span(into, IN + c * STAGGER, IN + c * STAGGER + FADE));
+        el.style.opacity = u.toFixed(3);
+        el.style.transform = u < 1 ? `translateY(${(LIFT * (1 - u)).toFixed(2)}px)` : "";
+      });
+    }
+    card.style.visibility = shown > 0.001 ? "visible" : "hidden";
+    card.style.pointerEvents = shown > 0.5 ? "auto" : "none";
+  }
   function onScroll() {
     const mid = scrollY + innerHeight / 2;
     // A pinned scene settles when its pin releases; other chapters at centre.
@@ -424,20 +462,35 @@ async function main() {
     const inScene = sections[i] === hero && t === 0;
     const a = sections[i] === hero ? scenePose(Math.max(0, scene.shown)) : { ...CHAPTERS[names[i]].pose, ...shift(sections[i]) };
     const b = { ...CHAPTERS[names[j]].pose, ...shift(sections[j]) };
-    const k = inOutQuad(span(t, HOLD, 1 - HOLD));
+    const k = inOutQuad(span(t, ...MOVE));
     const pose = {};
     for (const key of Object.keys(a)) pose[key] = a[key] + (b[key] - a[key]) * k;
     // In the scene the camera follows the same eased progress as the copy.
-    device.setPose(pose, false, inScene ? 0.5 : undefined);
+    // Copy is scrubbed directly, so the camera follows briskly to stay in step.
+    device.setPose(pose, false, inScene ? 0.5 : 0.22);
     stage.classList.toggle("intro", pose.reveal < 0.5);
-    // Fade copy by distance from its chapter.
+    // Pinned chapters crossfade on the timeline; the opening and the
+    // playground flow, fading by distance from their chapter.
     sections.forEach((s, n) => {
+      if (s.classList.contains("pinned")) return pinnedCopy(s, n, i + t);
+      if (s === hero) {
+        // After its pin releases the opening copy holds its place too (undo
+        // the scroll), then leaves on the same timeline as pinned chapters.
+        const past = Math.max(0, scrollY - (hero.offsetTop + hero.offsetHeight - innerHeight));
+        const u = inOutQuad(span(i === 0 ? t : 1, ...OUT_WIDE));
+        heroCard.style.transform = past > 0 || u > 0 ? `translateY(${(past - LIFT * u).toFixed(2)}px)` : "";
+        heroCard.style.visibility = u < 1 ? "" : "hidden";
+        s.style.setProperty("--reveal", (1 - u).toFixed(3));
+        return;
+      }
+      // The playground shows as soon as it rises into view, so the hand-over
+      // from the last pinned chapter has no gap.
       const d = Math.abs(n - (i + t));
-      s.style.setProperty("--reveal", (1 - span(d, 0.28, 0.62)).toFixed(3));
+      s.style.setProperty("--reveal", (1 - span(d, 0.5, 0.9)).toFixed(3));
       if (d < ENTER) s.classList.add("entered");
     });
     // Debounce chapter switches so a fast fling doesn't churn the avatar.
-    const next = t < 0.5 ? i : j;
+    const next = t < IN ? i : j; // the avatar acts out the copy that is arriving
     if (next !== pending) {
       pending = next;
       clearTimeout(pendingTimer);
