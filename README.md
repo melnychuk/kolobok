@@ -32,7 +32,7 @@ Easiest: paste this into your coding agent (Copilot CLI, Pi, …). The
 flashing or using sudo, run the installer and verify the Stick with you:
 
 ```text
-Set up my Copilot Stick S3 (the M5Stack StickS3 status buddy for my coding agents). Follow https://melnychuk.github.io/stick-s3/install.md: check my machine, ask me before flashing the firmware or running anything with sudo, then verify it with me.
+Set up my Copilot Stick S3 using https://melnychuk.github.io/stick-s3/install.md
 ```
 
 Or, on Linux or macOS, one line installs the bridge as a login service (no sudo):

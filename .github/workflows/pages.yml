@@ -63,5 +63,9 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+      # The artifact list can lag the upload by a moment; deploy-pages then
+      # fails with "No artifacts named github-pages".
+      - name: Let the uploaded artifact become visible
+        run: sleep 15
       - id: deployment
         uses: actions/deploy-pages@v4
