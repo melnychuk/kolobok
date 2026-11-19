@@ -76,11 +76,11 @@ body::after {
    js/intro.js to match the first 3D frame exactly, breathing slowly. */
 .loading {
   position: absolute; inset: 0; display: grid; place-content: center; grid-auto-flow: column;
-  gap: var(--slit-gap, 1.6vh); transform: translateY(var(--slit-y, 1.1vh));
+  gap: var(--slit-gap, 1.26vh); transform: translateY(var(--slit-y, .87vh));
   transition: opacity .7s ease-in; pointer-events: none;
 }
 .loading span {
-  width: var(--slit-w, 2.9vh); height: var(--slit-h, 2px); border-radius: 99px; background: var(--eye);
+  width: var(--slit-w, 2.29vh); height: var(--slit-h, 2px); border-radius: 99px; background: var(--eye);
   animation: doze 3.2s ease-in-out infinite;
 }
 @keyframes doze { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
@@ -226,6 +226,12 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 .setup code { color: var(--eye); }
 pre { position: relative; margin: 0; padding: 20px 22px; border-radius: 18px; background: #04050a; border: 1px solid var(--line); overflow-x: auto; font: 14px/1.7 var(--mono); }
 pre code { font-size: inherit; color: #d6def5; }
+.hero .card:has(pre.install) { max-width: 600px; }
+.hero pre.install { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding: 10px 10px 10px 16px; font-size: 12px; overflow: hidden; }
+.hero pre.install code { flex: 1; min-width: 0; overflow-x: auto; white-space: pre; scrollbar-width: none; }
+.hero pre.install .copy-btn { position: static; flex: none; }
+.card .install-note { margin: 8px 0 0; }
+.install-note code { color: var(--eye); }
 .copy-btn { position: absolute; top: 10px; right: 10px; border: 1px solid var(--line); background: #ffffff10; border-radius: 9px; padding: 3px 10px; font: 12px var(--mono); }
 footer { max-width: 1200px; margin: 110px auto 0; padding: 32px clamp(16px, 4vw, 48px) 56px; border-top: 1px solid var(--line); color: var(--muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
 footer p { margin: 0; }
@@ -251,6 +257,7 @@ footer p { margin: 0; }
   .chapter.right .card { margin-right: 0; }
   .card h2 { font-size: 30px; margin: 10px 0 8px; }
   .card p { font-size: 16px; }
+  .hero pre.install code { white-space: normal; overflow-wrap: anywhere; }
   h1 { font-size: 46px; margin-bottom: 12px; }
   .eyebrow { font-size: 10.5px; margin-bottom: 12px; padding: 4px 12px 4px 9px; gap: 7px; border-radius: 12px; }
   .chapter.intro { padding-bottom: 26px; }

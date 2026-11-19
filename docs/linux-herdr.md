@@ -24,6 +24,15 @@ bar uses. There is no independent transcript or Copilot event-log scanner.
 
 ## Set up
 
+The quickest way is the installer, which does the steps below for you
+(`--dictation` adds the speech model, `--help` lists options):
+
+```sh
+curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash
+```
+
+By hand:
+
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install sherpa-onnx==1.13.8 numpy==2.5.3

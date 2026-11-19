@@ -10,12 +10,14 @@
 
 export const SCREEN = { x: 6.6, w: 24.9, h: 14.0 }; // ST7789P3 active area (mm)
 const FACE_Z = 7.55; // the pixel plane sits FRONT + 0.05 mm in front of the target
-export const WAKE_FROM = 2.6;
+export const WAKE_FROM = 2.2;
 export const WAKE_MS = 2600; // dolly duration
 export const WAKE_AT = 0.62; // fraction of the dolly when the eyes open
 
 export const narrow = () => matchMedia("(max-width: 860px)").matches;
-export const introDist = () => (narrow() ? 80 : 100);
+// Far enough that the 240×135 screen is magnified only ~1.25×: closer, its
+// pixels show.
+export const introDist = () => (narrow() ? 120 : 150);
 // Vertical field of view: keeps the whole stick in frame on narrow screens.
 export const fovFor = (w, h) => (w / h < 1.1 ? Math.min(52, 26 * (1.25 / Math.max(0.5, w / h))) : 26);
 

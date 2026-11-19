@@ -72,6 +72,8 @@
             <h1>Your agents,<br><span class="squiggle">with a face.</span></h1>
             <p class="lead">A tiny desk buddy that shows what your coding agents are up to, at a glance.</p>
             <p class="realdeal"><span class="chip">not a video</span> That's the real firmware renderer, compiled to WebAssembly and living in the stick.</p>
+<pre data-copy class="install"><code>curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash</code></pre>
+            <p class="tiny install-note">Linux or macOS · <a href="#setup">firmware and other options</a></p>
           </div>
         </section>
 
@@ -206,37 +208,33 @@
       <p class="sub">Firmware, bridges, docs and this site are open source (MIT) on <a href="https://github.com/melnychuk/stick-s3">GitHub</a>.</p>
       <div class="setup" data-tabs>
         <div class="tabs" role="tablist">
-          <button role="tab" aria-selected="true" data-target="linux">Linux / Herdr</button>
-          <button role="tab" aria-selected="false" data-target="mac">macOS / Herdr</button>
+          <button role="tab" aria-selected="true" data-target="install">Install</button>
           <button role="tab" aria-selected="false" data-target="flash">Flash firmware</button>
+          <button role="tab" aria-selected="false" data-target="manual">By hand</button>
         </div>
-        <div data-panel="linux">
-          <p>Python bridge plus the Herdr task helper from the Agents panel plugin. Local CPU dictation, USB permissions and running it as a service: <code>docs/linux-herdr.md</code>.</p>
-<pre data-copy><code>python3 -m venv .venv
-.venv/bin/pip install sherpa-onnx==1.13.8 numpy==2.5.3
-export STICK_S3_HERDR_HELPER=/path/to/herdr_tasks.py
-.venv/bin/python bridge/herdr_bridge.py --once   # status preview, no USB
-.venv/bin/python bridge/herdr_bridge.py
+        <div data-panel="install">
+          <p>Linux or macOS. Downloads the bridge to <code>~/.local/share/stick-s3</code>, finds your Herdr setup and starts it at login. No sudo; nothing leaves your machine.</p>
+<pre data-copy><code>curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash
 
-# Recommended: watch CLI and native Herdr together
-mkdir -p ~/.config/stick-s3
-cp -n docs/herdr-instances.example.json ~/.config/stick-s3/herdr.json</code></pre>
-        </div>
-        <div data-panel="mac" hidden>
-          <p>USB status and short-press focus for Herdr (including Pi). See <code>docs/macos-herdr.md</code>.</p>
-<pre data-copy><code># check the snapshot first (no USB)
-python3 bridge/macos_herdr_bridge.py --session default --once
+# Linux: also enable push-to-talk dictation (local CPU speech recognition, ~632 MiB)
+curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash -s -- --dictation
 
-# then run it against your Stick
-python3 bridge/macos_herdr_bridge.py --session default --port /dev/cu.usbmodem&lt;port&gt;</code></pre>
+# remove the service again
+curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash -s -- --uninstall</code></pre>
         </div>
         <div data-panel="flash" hidden>
-          <p>Arduino CLI with the M5Stack ESP32 core. If upload won't start, hold the side power key ~2s until the green LED blinks.</p>
-<pre data-copy><code>arduino-cli core install m5stack:esp32 \
-  --additional-urls https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
-arduino-cli lib install M5Unified
-arduino-cli compile --fqbn m5stack:esp32:m5stack_sticks3 firmware
-arduino-cli upload  --fqbn m5stack:esp32:m5stack_sticks3 --port /dev/cu.usbmodem&lt;port&gt; firmware</code></pre>
+          <p>Built by CI from the latest source, checksum-verified and flashed with esptool. It asks before writing. If it won't start, hold the side power key ~2s until the green LED blinks.</p>
+<pre data-copy><code># bridge + firmware
+curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash -s -- --flash
+
+# firmware only
+curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash -s -- --flash-only</code></pre>
+        </div>
+        <div data-panel="manual" hidden>
+          <p>Prefer doing it yourself? <code>docs/linux-herdr.md</code> and <code>docs/macos-herdr.md</code> cover the bridges; the README covers building the firmware with Arduino CLI.</p>
+<pre data-copy><code>git clone https://github.com/melnychuk/stick-s3.git && cd stick-s3
+python3 -m venv .venv && .venv/bin/pip install numpy
+.venv/bin/python bridge/herdr_bridge.py --once   # status preview, no USB</code></pre>
         </div>
       </div>
     </section>

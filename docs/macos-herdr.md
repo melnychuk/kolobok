@@ -5,6 +5,16 @@ No firmware flash is needed if the Stick already runs the current `S3V1`
 binary-framed button firmware. This host supports status and **short clicks only**;
 held-button audio is discarded in memory, with no ASR, recording, upload, or input.
 
+## Quick install
+
+```sh
+curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash
+```
+
+The installer runs the read-only check below, then installs a LaunchAgent
+(`io.github.melnychuk.stick-s3`, logs in `~/Library/Logs/stick-s3/`). Pass
+`--session NAME` for a session other than `default`.
+
 ## Check before connecting
 
 1. Connect the Stick with a USB data cable.

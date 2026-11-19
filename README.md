@@ -25,7 +25,20 @@ Live demo with the real firmware renderer compiled to WebAssembly:
 | `experiments/avatar-widget/` | Command-driven compositor shared by the site and desktop header. |
 | `docs/` | Design notes, bridge guides and performance research. |
 
-## Flash the firmware
+## Install
+
+On Linux or macOS, one line installs the bridge as a login service (no sudo):
+
+```sh
+curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash
+```
+
+Add options after `bash -s --`: `--flash` also flashes the latest prebuilt
+firmware (it asks first), `--flash-only` skips the bridge, `--dictation` enables
+Linux push-to-talk with local CPU speech recognition, `--uninstall` removes the
+service, `--help` lists the rest. The script is [`site/install.sh`](site/install.sh).
+
+## Build and flash the firmware yourself
 
 Arduino CLI with the M5Stack ESP32 core:
 

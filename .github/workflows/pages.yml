@@ -5,7 +5,14 @@ name: Site
 on:
   push:
     branches: [main]
-    paths: [site/**, firmware/**, experiments/avatar-widget/**, tests/preview_avatar.cpp, scripts/build-site-wasm.sh, .github/workflows/pages.yml]
+    paths:
+      - site/**
+      - firmware/**
+      - experiments/avatar-widget/**
+      - tests/preview_avatar.cpp
+      - scripts/build-site-wasm.sh
+      - scripts/package-firmware.sh
+      - .github/workflows/pages.yml
   workflow_dispatch:
 
 permissions:
@@ -31,6 +38,27 @@ jobs:
           echo "WASI_SDK_PATH=$RUNNER_TEMP/wasi-sdk-25.0-x86_64-linux" >> "$GITHUB_ENV"
       - name: Build firmware renderer for the web
         run: ./scripts/build-site-wasm.sh
+      # Prebuilt firmware for `install.sh --flash`: same pinned core/libraries
+      # and O2 recipe as a local build; ambient startle stays off (opt-in).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.arduino15
+          key: arduino15-m5stack-esp32-3.3.9-m5unified-0.2.25-m5gfx-0.2.32
+      - name: Build StickS3 firmware
+        run: |
+          v=1.6.0
+          rel=https://github.com/arduino/arduino-cli/releases/download
+          curl -fsSL "$rel/v$v/arduino-cli_${v}_Linux_64bit.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP" arduino-cli
+          cli="$RUNNER_TEMP/arduino-cli"
+          index=https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
+          "$cli" core update-index --additional-urls "$index"
+          "$cli" core install m5stack:esp32@3.3.9 --additional-urls "$index"
+          "$cli" lib install M5Unified@0.2.25 M5GFX@0.2.32
+          "$cli" compile --fqbn m5stack:esp32:m5stack_sticks3 \
+            --build-property compiler.optimization_flags=-O2 \
+            --build-path "$RUNNER_TEMP/build" firmware
+          ./scripts/package-firmware.sh "$RUNNER_TEMP/build" site/firmware
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
