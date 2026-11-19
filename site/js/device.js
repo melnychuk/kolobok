@@ -91,6 +91,10 @@ export class Device {
     this.pressDepth = 0;
     this.pressed = false;
     this.shakeAt = -1; // seconds; a loud noise rattles the stick briefly
+    // Subtle look-at-the-cursor tilt (mouse only): pointer in client px, and
+    // the eased tilt in radians. Null pointer = level.
+    this.cursor = null;
+    this.tilt = { x: 0, y: 0 };
     this.glow = new THREE.Color(0x3b82f6);
     this.glowTarget = new THREE.Color(0x3b82f6);
     this.reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -600,6 +604,31 @@ export class Device {
     };
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
+    // The copy cards cover the canvas, so follow the mouse page-wide.
+    addEventListener("pointermove", (event) => {
+      this.cursor = event.pointerType === "mouse" ? { x: event.clientX, y: event.clientY } : null;
+    }, { passive: true });
+    document.documentElement.addEventListener("pointerleave", () => { this.cursor = null; });
+    addEventListener("blur", () => { this.cursor = null; });
+  }
+
+  // Turn the stick a few degrees toward the cursor, measured from where the
+  // stick actually is on screen (the camera shifts it beside the copy).
+  #updateTilt() {
+    let x = 0, y = 0;
+    if (this.cursor && !this.reduceMotion && !this.drag.active) {
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      const at = this.root.getWorldPosition(new THREE.Vector3()).project(this.camera);
+      const px = rect.left + (at.x + 1) / 2 * rect.width, py = rect.top + (1 - at.y) / 2 * rect.height;
+      // Saturating: a cursor half the stage away already gets most of the turn.
+      const reach = Math.max(240, Math.min(rect.width, rect.height) * 0.5);
+      y = Math.tanh((this.cursor.x - px) / reach) * 0.16; // yaw toward it
+      x = Math.tanh((this.cursor.y - py) / reach) * 0.1; // pitch toward it
+    }
+    this.tilt.x = damp(this.tilt.x, x, 0.05);
+    this.tilt.y = damp(this.tilt.y, y, 0.05);
+    this.root.rotation.x = this.tilt.x;
+    this.root.rotation.y = this.tilt.y;
   }
 
   press(down) {
@@ -722,6 +751,7 @@ export class Device {
     this.statusLight.color.copy(this.glow);
     this.poolMat.color.copy(this.glow);
     this.#updateCamera(now);
+    this.#updateTilt();
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   }
