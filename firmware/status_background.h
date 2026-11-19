@@ -22,9 +22,11 @@ inline float channel(uint16_t color,int shift,int mask) {
 inline uint16_t color(int x,int y,uint16_t done,uint16_t active,
                       float donePresence,float activePresence,
                       uint16_t portrait=0,float portraitPresence=0,
-                      uint16_t wash=0,float washPresence=0) {
+                      uint16_t wash=0,float washPresence=0,
+                      uint16_t alert=0,float alertPresence=0) {
  donePresence=clamp(donePresence);activePresence=clamp(activePresence);
  portraitPresence=clamp(portraitPresence);washPresence=clamp(washPresence);
+ alertPresence=clamp(alertPresence);
  const float paired=donePresence<activePresence?donePresence:activePresence;
  const float spatial=weight(x);
  // Static subpixel dithering softens RGB565 banding without animated grain.
@@ -41,7 +43,10 @@ inline uint16_t color(int x,int y,uint16_t done,uint16_t active,
   const float value=split+(gradient-split)*paired;
   // Exactly-zero wash leaves the established gradient bit-identical. A wash
   // floods the WHOLE backdrop (completion flash), dithered like the gradient.
-  result[c]=quantize(washPresence>0?value+(channel(wash,shifts[c],masks[c])-value)*washPresence:value,
+  const float washed=washPresence>0?value+(channel(wash,shifts[c],masks[c])-value)*washPresence:value;
+  // An input request floods the whole screen with its pulsing field, above
+  // the counters' colors (which it hides). Exactly-zero keeps the old rows.
+  result[c]=quantize(alertPresence>0?washed+(channel(alert,shifts[c],masks[c])-washed)*alertPresence:washed,
                      masks[c],threshold);
  }
  return static_cast<uint16_t>((result[0]<<11)|(result[1]<<5)|result[2]);
@@ -54,11 +59,14 @@ struct State {
  float donePresence,activePresence,portraitPresence;
  uint16_t wash;
  float washPresence;
+ uint16_t alert;
+ float alertPresence;
  bool operator==(const State& other) const {
   return done==other.done && active==other.active && portrait==other.portrait &&
          donePresence==other.donePresence && activePresence==other.activePresence &&
          portraitPresence==other.portraitPresence && wash==other.wash &&
-         washPresence==other.washPresence;
+         washPresence==other.washPresence && alert==other.alert &&
+         alertPresence==other.alertPresence;
  }
 };
 // A sorting numeral may become zero at the apex, before the wide face reflows.
@@ -86,14 +94,15 @@ struct SortingDeparture {
  }
 };
 struct RowCache {
- State previous={0,0,0,0,0,0,0,0};
+ State previous={0,0,0,0,0,0,0,0,0,0};
  bool valid=false;
  template<class Pixel>
  bool update(const State& state,Pixel pixel) {
   if(valid && state==previous)return false;
   for(int y=0;y<4;++y)for(int x=0;x<240;++x)
    pixel(x,y,color(x,y,state.done,state.active,state.donePresence,state.activePresence,
-                   state.portrait,state.portraitPresence,state.wash,state.washPresence));
+                   state.portrait,state.portraitPresence,state.wash,state.washPresence,
+                   state.alert,state.alertPresence));
   previous=state;valid=true;return true;
  }
 };

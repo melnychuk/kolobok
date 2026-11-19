@@ -7,7 +7,8 @@ Live demo with the real firmware renderer compiled to WebAssembly:
 
 - **Blue, right:** active tasks, as Roman numerals. A new one drops in from the top.
 - **Green, left:** unread completions. A finished task charges, bursts and flips across.
-- **Yellow band:** an agent needs you, with one polite C6→G6 chime.
+- **Orange-yellow glow:** an agent needs you. The avatar peeks up from below a
+  bobbing `!`, hops a little, and plays one polite C6→G6 chime.
 - **Front key:** short press opens the next unread or waiting task; hold to dictate
   into your agent with local, CPU-only speech recognition. While you talk, the eyes
   become a soundwave that follows your voice.

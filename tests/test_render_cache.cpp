@@ -33,7 +33,7 @@ volatile float benchmarkSink=0;
 int main(int argc,char** argv) {
  status_background::RowCache cache;
  uint16_t rows[4][240]={};
- const status_background::State initial={0x262b,0x3c1e,0,1,1,0,0xf7fc,0};
+ const status_background::State initial={0x262b,0x3c1e,0,1,1,0,0xf7fc,0,0xfe62,0};
  const auto checkRows=[&](const status_background::State& state,bool miss) {
   int calls=0;
   const bool refreshed=cache.update(state,[&](int x,int y,uint16_t color) {
@@ -43,12 +43,12 @@ int main(int argc,char** argv) {
   for(int y=0;y<4;++y)for(int x=0;x<240;++x) {
    assert(rows[y][x]==status_background::color(x,y,state.done,state.active,
           state.donePresence,state.activePresence,state.portrait,state.portraitPresence,
-          state.wash,state.washPresence));
+          state.wash,state.washPresence,state.alert,state.alertPresence));
    ++comparisons;
   }
  };
  checkRows(initial,true);checkRows(initial,false);
- for(int member=0;member<8;++member) {
+ for(int member=0;member<10;++member) {
   auto changed=initial;
   switch(member) {
    case 0:changed.done^=1;break;
@@ -59,6 +59,8 @@ int main(int argc,char** argv) {
    case 5:changed.portraitPresence=nextafterf(0,1);break;
    case 6:changed.wash^=1;break;
    case 7:changed.washPresence=nextafterf(0,1);break;
+   case 8:changed.alert^=1;break;
+   case 9:changed.alertPresence=nextafterf(0,1);break;
   }
   checkRows(changed,true);checkRows(changed,false);checkRows(initial,true);
  }

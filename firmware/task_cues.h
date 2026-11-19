@@ -144,7 +144,6 @@ struct Arrival {
   const float stretch=avatar_scene::unusedSideStretch(s);
   float worst=-1000;
   for(int y=0;y<restTop&&y<135;y+=3) {
-   if(y+.5f<avatar_scene::kAlertBandHeight*s.alert)continue;
    float ny=(y+.5f-g.cy)/g.ry;
    if(ny>.85f)ny=avatar_scene::mix(ny,.85f,s.corners);
    if(fabsf(ny)>=1)continue;

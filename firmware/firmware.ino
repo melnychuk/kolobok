@@ -17,6 +17,7 @@
 #include "avatar_behavior.h"
 #include "avatar_director.h"
 #include "task_cues.h"
+#include "request_scene.h"
 #include "usb_presence.h"
 #include "power_nap.h"
 #include "frame_profile.h"
@@ -55,7 +56,6 @@ constexpr uint16_t kEye = rgb565(236, 244, 255);
 constexpr uint16_t kWorking = rgb565(0x3B, 0x82, 0xF6);
 constexpr uint16_t kBlocked = rgb565(0xF7, 0x76, 0x8E);
 constexpr uint16_t kDone = rgb565(0x22, 0xC5, 0x5E);
-constexpr uint16_t kAttention = rgb565(0xFA, 0xCC, 0x15);
 
 int activeCount = 0;
 int attentionCount = 0;
@@ -99,6 +99,8 @@ avatar_interaction::Checks counterChecks;
 avatar_interaction::CounterFlight counterFlight;
 avatar_interaction::ButtonCue buttonCue;
 avatar_interaction::Startle startle;
+// Small hops while requesting input, below the `!` (request_scene.h).
+request_scene::Hops requestHops;
 float pendingStartle = 0;  // Detector output, consumed (or dropped) by updateGaze.
 // Listening soundwave: loudness of the dictation blocks already being captured,
 // computed here (10ms levels only); nothing new is sent, stored or logged.
@@ -508,6 +510,8 @@ void updateGaze(float seconds, uint32_t now) {
   actingEyes=buttonCue.apply(actingEyes,now);
   actingBody=startle.apply(actingBody,now,true);
   actingEyes=startle.apply(actingEyes,now);
+  requestHops.update(now,face==Face::waiting,!buttonCue.active&&!startle.active,
+                     static_cast<uint32_t>(random(0x7fffffff)));
   if(face!=Face::listening&&face!=Face::sleeping&&face!=Face::offline) {
     actingBody=countReaction.body(actingBody,now,face==Face::waiting);
     actingEyes=countReaction.apply(actingEyes,now,face==Face::waiting);
@@ -598,6 +602,8 @@ void updateLayout(float seconds, uint32_t now) {
   scene.eyeX=120+ui.offset+actingEyes.x*gazeRoom+surface.x*.45f*(1-ui.sleep);
   scene.eyeY=avatar_scene::eyeBaseline(ui.corners,ui.alert,ui.sleep,breath)+
              actingEyes.y*gazeRoom+surface.y*.55f*(1-ui.sleep);
+  scene.hop=requestHops.height(now)*ui.alert;
+  scene.hopStretch=requestHops.stretch(now)*ui.alert;
   scene.eyes=actingEyes; scene.body=actingBody; scene.flowClock=flowClock;
   listenWave.update(seconds, now, face == Face::listening,
                     face == Face::listening ? voiceLevel.level(now) : 0);
@@ -650,7 +656,8 @@ status_background::State statusBackgroundState(uint32_t now) {
   const bool portrait=ui.alert>.01f && !(doneCount>0 && activeCount>0);
   return {kDone,activeFill,doneCount>0?kDone:activeFill,
           backgroundDeparture.presence[0],backgroundDeparture.presence[1],portrait?ui.alert:0,
-          taskTransfer.washTint,taskTransfer.washValue};
+          taskTransfer.washTint,taskTransfer.washValue,
+          request_scene::field(now),ui.alert};
 }
 
 uint16_t statusBackgroundAt(int x,int y) {
@@ -674,7 +681,8 @@ void drawBadge(Badge& badge, bool leftSide, uint32_t now) {
   if (badge.presence < 0.01f) return;
 
   const float settled = constrain((badge.presence - 0.8f) / 0.2f, 0.0f, 1.0f);
-  const float alpha = badge.label * settled * taskTransfer.labelAlpha(now, leftSide);
+  // Requests hide the counts (visually only) behind the pulsing field.
+  const float alpha = badge.label * settled * taskTransfer.labelAlpha(now, leftSide) * (1 - ui.alert);
   // A dropping numeral needs only its backdrop, not the faded-in resting label.
   const bool dropping = !leftSide && taskArrival.busy(now);
   if (alpha < 0.02f && !(dropping && settled > 0.02f)) return;
@@ -693,7 +701,7 @@ void drawBadge(Badge& badge, bool leftSide, uint32_t now) {
   char label[10];
   roman_counts::format(badge.shown, label);
   if(leftSide&&!countCueBusy(now))director.accents(now,centerX,centerY-font.capHeight/2-2,
-      [&](int x,int y,float a){inkFrame(x,y,kDone,a*alpha);});
+      [&](int x,int y,float a){inkFrame(x,y,kDone,a*alpha);});  // alpha includes the request fade
   // Restore the exact status background in the outline, including its gradient.
   // It is a backdrop to SOLID black letters, not a white border or hollow font.
   // Draw last so freely flapping face edges may overlap without hiding counts.
@@ -835,6 +843,12 @@ void renderFrame(uint32_t now) {
       reclaimed&&ui.offset<0,reclaimed&&ui.offset>0,
       bridgeConnected&&!voiceRecording&&attentionCount==0,seconds);
   drawIndicators(now);
+  // The request `!` sits in the pulsing field; the rising head may cover it.
+  if (ui.alert > .01f) {
+    request_scene::sign(now,[&](int x,int y,float alpha) {
+      if(x>=0 && x<kScreenWidth && y>=0 && y<kScreenHeight) inkFrame(x,y,kBlack,alpha*ui.alert);
+    });
+  }
   STICK_PROFILE_MARK(background);
   avatar_scene::buildMask(scene,faceMask);
   updateCounterContact(ui.done, true, seconds, now);
@@ -859,17 +873,6 @@ void renderFrame(uint32_t now) {
     inkFrame(x,y,kEye,alpha);
   });
   STICK_PROFILE_MARK(mouth);
-  if (ui.alert > .01f) {
-    const int height = lroundf(avatar_scene::kAlertBandHeight * ui.alert);
-    const uint16_t yellow = blend565(kBlack,kAttention,ui.alert);
-    frame().fillRect(0,0,kScreenWidth,height,yellow);
-    // Wrapped exact period: float(now/1000) loses precision after a day of uptime.
-    eye_raster::attentionMark(120,(now%1800)/1000.0f,[&](int x,int y,float alpha) {
-      if(x>=0 && x<kScreenWidth && y>=0 && y<height) {
-        frame().drawPixel(x,y,blend565(yellow,kBlack,alpha*ui.alert));
-      }
-    });
-  }
   STICK_PROFILE_MARK(attention);
   drawBadge(ui.done,true,now);
   drawBadge(ui.active,false,now);

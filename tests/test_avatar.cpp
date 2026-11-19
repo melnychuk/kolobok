@@ -124,7 +124,7 @@ int main() {
      float left,right;
      if(avatar_scene::bounds(scene,y,left,right)) {
       assert(isfinite(left)&&isfinite(right));assert(left>=0&&right<=240&&right>left);
-      if(state==2)assert(y>=avatar_scene::kAlertBandHeight);
+      if(state==2)assert(y>=36);  // the request dome stays below the `!`
       // Text overlap is intentional now; foreground outlines protect counts
       // instead of freezing a whole horizontal band of the face.
      }
@@ -132,7 +132,7 @@ int main() {
     // Check shared raster and silhouette clipping at a few meaningful frames.
     if(ms%170==0)avatar_scene::eyes(scene,[&](int x,int y,float alpha) {
      assert(x>=0&&x<240&&y>=0&&y<135&&alpha>0&&alpha<=1);
-     if(state==2)assert(y>=avatar_scene::kAlertBandHeight);
+     if(state==2)assert(y>=50);
     });
    }
   }
@@ -228,7 +228,4 @@ int main() {
  });
  assert(centerWeight>0&&outerWeight>0);
  assert(outerY/outerWeight-centerY/centerWeight>3);
- for(int tick=0;tick<1800;tick+=33)eye_raster::attentionMark(120,tick/1000.0f,[&](int x,int y,float a) {
-  assert(x>=115&&x<=124&&y>=0&&y<avatar_scene::kAlertBandHeight&&a>0&&a<=1);
- });
 }

@@ -168,10 +168,4 @@ void box(float cx,float cy,float w,float h,float radius,Pixel pixel) {
    if(a>0) pixel(x,y,a);
   }
 }
-template<class Pixel>
-void attentionMark(float cx,float seconds,Pixel pixel) {
- const float bob=sinf(seconds*3.4906585f)*1.6f;
- box(cx,10+bob,5,13,2,pixel);
- box(cx,23+bob,4.5f,4.5f,2.25f,pixel);
-}
 } // namespace eye_raster

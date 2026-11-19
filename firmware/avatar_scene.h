@@ -13,14 +13,29 @@
 #endif
 
 namespace avatar_scene {
-constexpr float kAlertBandHeight=28;
+// Input request ("sunrise") layout: the screen becomes a slowly pulsing
+// orange-yellow field with the `!` above, and the body sits below it with only
+// the top of its blob showing. The dome's centre is below the display, so the
+// lower rim never shows; stretching raises the top, a hop lifts the whole dome.
+constexpr float kRequestDomeX=120,kRequestDomeY=172,kRequestDomeRadiusX=126,kRequestDomeRadiusY=124;
+constexpr float kRequestEyeY=94;
+// The skin keeps at least this much body above the eyes: looking up at the
+// `!` stretches the dome instead of clipping flat eye tops.
+constexpr float kRequestEyeHeadroom=9;
+// Eyes follow this share of the dome top's hop squash/stretch.
+constexpr float kRequestHopEyeFollow=.6f;
+// The authored request rest pose (eye/body width 1.10, height 1.15) is the
+// dome's neutral size; acting squash/stretch reaches it only partly.
+constexpr float kRequestRestWidth=1.10f,kRequestRestHeight=1.15f;
+constexpr float kRequestDomeStretchX=.35f,kRequestDomeStretchY=.30f;
 // Shared with firmware and native event reflow: quicker travel, smooth tails.
 constexpr float kShiftSeconds=.15f;
 constexpr float kReflowSeconds=.21f;
-inline float eyeBaseline(float corners,float alert,float sleep,float breath=0) {
- return 67.5f-20*corners+21*alert+8*sleep+breath;
-}
 inline float mix(float a,float b,float t) { return a+(b-a)*t; }
+// Zero alert is exactly the original 67.5-20*corners baseline.
+inline float eyeBaseline(float corners,float alert,float sleep,float breath=0) {
+ return mix(67.5f-20*corners,kRequestEyeY,alert)+8*sleep+breath;
+}
 // Exponential ease that actually ARRIVES. A plain exponential never reaches its
 // target in float (it stalls a denormal/ulp away), which silently defeats every
 // exact-zero fast path and keeps exact-keyed caches missing. 1e-4 is far below
@@ -55,6 +70,9 @@ struct Scene {
  // Step-over: a rounded foot leads out of one side (-1 left, +1 right) and
  // plants past the screen edge. Zero progress keeps every raster exact.
  float stepSide=0,stepProgress=0;
+ // Request hop (request_scene.h): pixels the dome and eyes are lifted, and
+ // the dome's signed squash(-)/stretch(+). Zero keeps every raster exact.
+ float hop=0,hopStretch=0;
  Hands hands;
  // Listening soundwave: 0 keeps the eye raster exact; see listen_wave.h.
  float wave=0;
@@ -64,6 +82,16 @@ struct Scene {
  const Surface* surface=nullptr;
 };
 struct Geometry { float cx,cy,rx,ry,power,floor; };
+inline float renderedEyeHeight(const Scene& scene);
+inline float smoothMax(float a,float b,float k) {
+ const float h=fmaxf(k-fabsf(a-b),0)/k;
+ return fmaxf(a,b)+h*h*k*.25f;
+}
+// Eye centre including the request hop; zero hop is exactly scene.eyeY.
+inline float eyeCenterY(const Scene& scene) {
+ if(scene.hop==0&&scene.hopStretch==0)return scene.eyeY;
+ return scene.eyeY-scene.hop-kRequestHopEyeFollow*kRequestDomeRadiusY*scene.hopStretch;
+}
 // Superellipse profile (1-|n|^p)^(1/p). Settled layouts use exactly p=2
 // (vertical) or p=4 (paired/request) now that eased layout values arrive, so
 // libm powf - two calls per row and per column, ~750 per frame - is needed
@@ -245,8 +273,24 @@ inline Geometry geometry(const Scene& scene) {
  const float px=scene.surface?scene.surface->x:scene.body.lean;
  const float py=scene.surface?scene.surface->y:scene.body.lift;
  const float floor=104+4*scene.alert;
- return {120+scene.offset+scene.counterShift+scene.away+px,mix(67.5f,floor-ry,scene.corners)+py,
-         rx,ry,mix(2,4,scene.corners),floor};
+ Geometry g={120+scene.offset+scene.counterShift+scene.away+px,mix(67.5f,floor-ry,scene.corners)+py,
+             rx,ry,mix(2,4,scene.corners),floor};
+ // Exact zero keeps every established layout bit-identical.
+ if(scene.alert>0) {
+  const float wide=scene.body.width*scene.body.bodyWidth/kRequestRestWidth-1;
+  const float tall=scene.body.height*scene.body.bodyHeight/kRequestRestHeight-1;
+  const float domeX=kRequestDomeRadiusX*(1+kRequestDomeStretchX*wide)*(1+.07f*impact)*
+                    (1-.7f*scene.hopStretch);
+  const float centre=kRequestDomeY+py-scene.hop;
+  float domeY=kRequestDomeRadiusY*(1+kRequestDomeStretchY*tall)*(1-.05f*impact)*(1+scene.hopStretch);
+  // Soft constraint: the top never cuts through the eyes; it stretches up.
+  domeY=smoothMax(domeY,centre-(eyeCenterY(scene)-renderedEyeHeight(scene)/2-kRequestEyeHeadroom),6);
+  g.cx=mix(g.cx,kRequestDomeX+scene.away+px,scene.alert);
+  g.cy=mix(g.cy,centre,scene.alert);
+  g.rx=mix(g.rx,domeX,scene.alert);g.ry=mix(g.ry,domeY,scene.alert);
+  g.power=mix(g.power,2,scene.alert);
+ }
+ return g;
 }
 // Stretch only the unused half of a single-counter body past the display.
 // Keep geometry/eye/mouth anchors and the counter-facing contour unchanged.
@@ -266,7 +310,6 @@ inline float softSides(const Scene& scene) {
 inline bool sideBounds(const Scene& scene,const Geometry& g,const fluid_face::Frame& fluid,
                        int y,float& left,float& right) {
  left=right=0;
- if(y+.5f<kAlertBandHeight*scene.alert)return false;
  float ny=(y+.5f-g.cy)/g.ry;
  // The lower spring rim, not a rigid ellipse cap, decides which pixels exist
  // around the support. This permits free overhangs below the contact plane.
@@ -429,10 +472,6 @@ inline void stepMask(const Scene& scene,Mask& mask) {
 // smooth-max fillet, so it is one soft body with no crease or detached part.
 // It only lowers existing body columns: a lobe can never float.
 constexpr float kLobeFillet=7;
-inline float smoothMax(float a,float b,float k) {
- const float h=fmaxf(k-fabsf(a-b),0)/k;
- return fmaxf(a,b)+h*h*k*.25f;
-}
 inline void lobeMask(const Scene& scene,Mask& mask) {
  for(int i=0;i<2;++i) {
   const float reach=fminf(1,scene.hands.reach[i]),radius=scene.hands.halfWidth[i];
@@ -485,7 +524,7 @@ constexpr float kEyeHeightScale=.81f;
 // Requests keep large open eyes: the authored request rest pose (1.15 of the
 // 44px request height) renders at 48px. The scale, not a hard floor, carries
 // the request squash/stretch acting (about 37..52px) instead of flattening it.
-constexpr float kRequestEyeHeight=48,kRequestAwakeHeight=44,kRequestRestHeight=1.15f;
+constexpr float kRequestEyeHeight=48,kRequestAwakeHeight=44;  // kRequestRestHeight: above
 constexpr float kRequestEyeScale=kRequestEyeHeight/(kRequestAwakeHeight*kRequestRestHeight);
 // Eye-size target floor while requesting: open, but below the authored squash.
 constexpr float kRequestEyeFloor=36;
@@ -513,7 +552,7 @@ template<class Pixel>
 void waveBars(const Scene& scene,const Mask& mask,Pixel pixel) {
  const auto& e=scene.eyes;
  const auto scale=[](float delta){return eye_raster::clamp(1+delta,.75f,1.25f);};
- listen_wave::bars(scene.eyeX+scene.counterShift+scene.away,scene.eyeY,scene.eyeWidth*scene.counterScale,
+ listen_wave::bars(scene.eyeX+scene.counterShift+scene.away,eyeCenterY(scene),scene.eyeWidth*scene.counterScale,
      renderedEyeHeight(scene),scene.gap*scene.counterScale,scene.wave,scale(e.scaleL),scale(e.scaleR),
      e.tilt,e.closeL,e.closeR,kBlinkSink,kBlinkWiden,
      [&](int i){return scene.waveBars[i];},
@@ -527,7 +566,7 @@ void waveBars(const Scene& scene,const Mask& mask,Pixel pixel) {
 template<class Pixel>
 void eyes(const Scene& scene,const Mask& mask,Pixel pixel) {
  if(scene.wave>=listen_wave::kClose) { waveBars(scene,mask,pixel);return; }
- eye_raster::render(scene.eyeX+scene.counterShift+scene.away,scene.eyeY,scene.eyeWidth*scene.counterScale,
+ eye_raster::render(scene.eyeX+scene.counterShift+scene.away,eyeCenterY(scene),scene.eyeWidth*scene.counterScale,
                     renderedEyeHeight(scene),scene.gap*scene.counterScale,
                     scene.wave>0?waveClosing(scene):scene.eyes,[&](int x,int y,float alpha) {
   const float coverage=mask.baseCoverage(x,y);
@@ -544,7 +583,7 @@ void eyes(const Scene& scene,const Mask& mask,Pixel pixel,Fill fill) {
   if(coverage>0)pixel(x,y,alpha*coverage);
  };
  if(scene.wave>=listen_wave::kClose) { waveBars(scene,mask,pixel);return; }
- eye_raster::render(scene.eyeX+scene.counterShift+scene.away,scene.eyeY,scene.eyeWidth*scene.counterScale,
+ eye_raster::render(scene.eyeX+scene.counterShift+scene.away,eyeCenterY(scene),scene.eyeWidth*scene.counterScale,
                     renderedEyeHeight(scene),scene.gap*scene.counterScale,
                     scene.wave>0?waveClosing(scene):scene.eyes,edge,[&](int x,int y,int length) {
   const bool row=y>=0&&y<135&&x>=0&&x+length<=240&&x>=mask.left[y]&&x+length<=mask.right[y];

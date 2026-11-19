@@ -71,7 +71,7 @@ scientific detector of thought, honesty, memory, or emotion.
   across frame rates. Central contact points sit on a flat surface; the ends
   remain free to flap, overhang the numerals, and send rounded travelling waves.
 - `firmware/avatar_scene.h`: shared full silhouette mask, quartic lower profile,
-  body scaling, gaze composition, attention-band clipping, and eye rendering.
+  body scaling, gaze composition, the low request dome, and eye rendering.
   Only the contact points constrain the rim; there is no counter-safe border.
 - `firmware/avatar_interaction.h`: short-press wink, dictation-release nod,
   happy completed-side / focused active-side check-ins, and mask-contact numeral
@@ -263,10 +263,24 @@ status-gradient-colored outline protects contrast when a free flap passes behind
 ## Seven input-request performances
 
 Input requests preempt completion/thinking immediately, while preserving a short
-visual entry blend. They do not interrupt recording/listening. The avatar moves
-lower than the other two main states; a **28px yellow strip** at the top contains
-a lightly bobbing black `!`. Open eyes stay at least 48px high in the settled
-request layout. Full closures are brief; there is no long sleeping pose.
+visual entry blend. They do not interrupt recording/listening. The whole screen becomes a slowly
+pulsing orange-yellow field (`request_scene::field`, yellow `#facc15` to amber
+`#fb9216`, 3.6s exact-wrap cosine, never a flash) with a large, lightly bobbing
+black `!` near the top. The body sits below it: an ellipse dome whose centre
+is below the display (`kRequestDome*` in `avatar_scene.h`), so only the top of
+the blob shows and the lower rim never does. Done/active numerals, their glints
+and colors are hidden visually while requesting (task data is untouched) and
+fade back afterwards. Authored request squash/stretch reaches the dome only
+partly (35% width, 30% height); a soft constraint keeps 9px of body above the
+eyes, so looking up at the `!` stretches the dome instead of clipping the eyes.
+With the extra room the body hops (`request_scene::Hops`): a double hop greets
+the request 260ms in, then one or two hops every 4.2–8s, each a 90ms crouch,
+9px parabolic 300ms jump (second hop 70%) and landing squash, rendered through
+`Scene::hop/hopStretch` (zero keeps every raster exact). Button and startle
+cues pause hops; ending the request stops them at once. Open eyes stay at least
+48px high in the settled request layout. Full closures are brief; there is no
+long sleeping pose. `tests/test_request_scene.cpp` covers the field, sign
+bounds, dome coverage, hop scheduling and unclipped eyes in every clip/hop phase.
 
 | Sequence | Eye performance | Matching face performance |
 |---|---|---|
@@ -278,8 +292,6 @@ request layout. Full closures are brief; there is no long sleeping pose.
 | Check then ask | left/right checks, deliberate direct request | active scan followed by a larger, stable front-facing shape |
 | Please | wide upward appeal, brief blink, patient open hold | hopeful lift with a readable pause |
 
-With only one count, the request background fills the lower portrait area with
-that status color instead of producing a hard black half-screen rectangle.
 There are no screen flashes or extra repeated chimes. The existing attention
 chime behavior is unchanged.
 
@@ -707,7 +719,7 @@ clip has its own intention and silhouette of motion:
 | Completion | Ta-da | squash/stretch, smile hold (≈ bounce) | anticipate away, present toward the completed counter with a tilted big smile, happy closure |
 | Completion | Proud of it | left/right tilted smiles (≈ new Ta-da) | chin-up rise and hold, satisfied nod |
 | Completion | Warm smile | smile hold + closure (≈ double blink) | slow tilted "melt" with one long happy closure |
-| Request | Check then ask | left/right scan (≈ Double take) | look up at the yellow `!` band twice, popping back to the viewer |
+| Request | Check then ask | left/right scan (≈ Double take) | look up at the `!` above twice, popping back to the viewer |
 | Request | Please | big stare + blink (≈ Look at me) | eager tilted side-to-side wiggle, then a big stare |
 | Listening | I follow | one nod | two small nods, no blink |
 | Listening | Taking it in | small aside hold | slow downward drift across, blink on the way back |

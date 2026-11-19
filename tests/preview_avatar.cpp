@@ -14,6 +14,7 @@
 #include "../firmware/eye_life.h"
 #include "../firmware/avatar_director.h"
 #include "../firmware/task_cues.h"
+#include "../firmware/request_scene.h"
 
 namespace {
 constexpr int W=240,H=135;
@@ -101,6 +102,7 @@ struct Preview {
  task_cues::Transfer transfer;
  task_cues::StepOver stepOver;  // done-only -> zero: cover the strip, don't fade it
  task_cues::CompletionPairing pairing;  // one completion split over two polls
+ request_scene::Hops hops;  // small request hops below the `!`
  count_raster::Cache flyRaster;
  eye_life::Life life;
  eye_life::SizeSpring eyeSize;
@@ -267,6 +269,10 @@ struct Preview {
   scene.eyes=button.apply(scene.eyes,ms);
   scene.body=startle.apply(scene.body,ms,true);
   scene.eyes=startle.apply(scene.eyes,ms);
+  {
+   const bool request=mode==19?liveMode==avatar_behavior::Mode::waiting:state==eye_acting::State::attention;
+   hops.update(ms,request,!button.active&&!startle.active,ms*2654435761u);
+  }
   scene.body=reaction.body(scene.body,ms,state==eye_acting::State::attention);
   scene.eyes=reaction.apply(scene.eyes,ms,state==eye_acting::State::attention);
   // Same life layer as firmware: only during authored eye holds, not cues.
@@ -310,6 +316,7 @@ struct Preview {
   scene.eyeX+=task_cues::Arrival::eyeReturn(arrivalDodge,
       scene.eyeX+scene.counterShift-(scene.gap/2+scene.eyeWidth)*scene.counterScale);
   scene.eyeY=avatar_scene::eyeBaseline(scene.corners,scene.alert,0)+scene.eyes.y+surface.y*.55f;
+  scene.hop=hops.height(ms)*scene.alert;scene.hopStretch=hops.stretch(ms)*scene.alert;
   {
    const bool listening=mode==19?liveMode==avatar_behavior::Mode::listening:
                         state==eye_acting::State::listening;
@@ -352,20 +359,23 @@ struct Preview {
   const uint16_t dark=rgb((darkRgb>>16)&255,(darkRgb>>8)&255,darkRgb&255);
   const int done=shownDone,active=shownActive;
   Canvas canvas;
-  const uint16_t green=rgb(34,197,94),blue=rgb(59,130,246),coral=rgb(247,118,142),eye=rgb(236,244,255),yellow=rgb(250,204,21);
+  const uint16_t green=rgb(34,197,94),blue=rgb(59,130,246),coral=rgb(247,118,142),eye=rgb(236,244,255);
   const uint16_t activeFill=blend(mode==19?blend(blue,coral,scene.alert):scene.alert?coral:blue,
                                   task_cues::kEnergy,transfer.glow(previous));
   const bool portrait=scene.alert && !(done&&active);
   const status_background::State backgroundState={green,activeFill,done?green:activeFill,
                                                  backgroundDeparture.presence[0],backgroundDeparture.presence[1],
                                                  portrait?(mode==19?scene.alert:1.0f):0.0f,
-                                                 transfer.washTint,transfer.washValue};
+                                                 transfer.washTint,transfer.washValue,
+                                                 request_scene::field(previous),scene.alert};
   backgroundCache.update(backgroundState,[&](int x,int y,uint16_t color){backdrop[y][x]=color;});
   const auto background=[&](int x,int y) {
    const uint16_t color=x>=0&&x<W?backdrop[y&3][x]:static_cast<uint16_t>(0);
    return color==0?dark:color;
   };
   for(int y=0;y<H;++y)for(int x=0;x<W;++x)canvas.pixels[y*W+x]=background(x,y);
+  // The `!` sits in the request field; the rising head may pass in front.
+  if(scene.alert>0)request_scene::sign(previous,[&](int x,int y,float a){canvas.ink(x,y,0,a*scene.alert);});
   const float exposed=(240-scene.region)/2;
   const float insetL=counterLabels.inset(0,exposed,scene.corners);
   const float insetR=counterLabels.inset(1,exposed,scene.corners);
@@ -377,22 +387,19 @@ struct Preview {
   avatar_scene::eyes(scene,mask,[&](int x,int y,float alpha){canvas.ink(x,y,eye,alpha);},
                      [&](int x,int y,int n){for(int i=0;i<n;++i)canvas.ink(x+i,y,eye);});
   avatar_scene::mouth(scene,mask,[&](int x,int y,float alpha){canvas.ink(x,y,eye,alpha);});
-  if(mode==19?liveMode==avatar_behavior::Mode::waiting:scene.alert>0) {
-   const int height=static_cast<int>(avatar_scene::kAlertBandHeight);
-   for(int y=0;y<height;++y)for(int x=0;x<W;++x)canvas.pixels[y*W+x]=yellow;
-   eye_raster::attentionMark(120,(previous%1800)/1000.0f,[&](int x,int y,float a){if(y<height)canvas.ink(x,y,0,a);});
-  }
   const float doneWidth=counterLabels.labels[0].width,activeWidth=counterLabels.labels[1].width;
   const auto& doneFont=counter_labels::font(counterLabels.labels[0].index);
   const auto& activeFont=counter_labels::font(counterLabels.labels[1].index);
   const auto left=flight.offset(previous,true,insetL,240-insetR,doneWidth,activeWidth);
   const auto right=flight.offset(previous,false,240-insetR,insetL,activeWidth,doneWidth);
+  // Requests hide the counts (visually only) behind the pulsing field.
+  const float shown=1-scene.alert;
   if(mode==19&&done>0&&!flight.busy(previous)&&!transfer.busy(previous)&&!stepOver.busy(previous))
    director.accents(previous,insetL,cy+donePop.lift(previous)-doneFont.capHeight/2-2,
-                    [&](int x,int y,float a){canvas.ink(x,y,green,a);});
+                    [&](int x,int y,float a){canvas.ink(x,y,green,a*shown);});
   const auto light=[&](int x,int y,float a){canvas.ink(x,y,task_cues::kFlash,a);};
   label(canvas,done,doneFont,insetL+left.x,cy+left.y,background,donePop,previous,doneRaster,doneSpring,
-        transfer.labelAlpha(previous,true),0,0,mask.stepSide?&mask:nullptr);
+        transfer.labelAlpha(previous,true)*shown,0,0,mask.stepSide?&mask:nullptr);
   if(arrival.busy(previous)) {
    // Resting layout font for the new label; keep extensions in one font.
    const auto& fromFont=&fontFor(arrival.from)==&fontFor(arrival.to)?activeFont:fontFor(arrival.from);
@@ -404,7 +411,7 @@ struct Preview {
    },light);
   } else {
    label(canvas,active,activeFont,240-insetR+right.x,cy+right.y,background,activePop,previous,activeRaster,
-         activeSpring,transfer.labelAlpha(previous,false),transfer.shakeX(previous),transfer.shakeY(previous));
+         activeSpring,transfer.labelAlpha(previous,false)*shown,transfer.shakeX(previous),transfer.shakeY(previous));
   }
   transfer.crackles(previous,light);
   transfer.flip(previous,doneFont,insetL,cy,
