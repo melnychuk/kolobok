@@ -142,8 +142,12 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 }
 @keyframes shimmer { to { background-position: 100% 0; } }
 .lead { font-size: clamp(19px, 1.6vw, 23px) !important; color: #d6dcef !important; }
-.realdeal { font-size: 15px !important; color: var(--muted) !important; }
-.chip { display: inline-block; padding: 2px 10px; margin-right: 6px; border-radius: 99px; background: var(--yellow); color: #111; font: 600 12px var(--mono); transform: rotate(-2deg); }
+.card .realdeal { display: flex; align-items: center; gap: 12px; font-size: 15px; line-height: 1.45; color: var(--muted); }
+/* Two text lines tall (15px x 1.45 x 2). */
+.realdeal .no-video { flex: none; width: 44px; height: 44px; color: #aab3cf; }
+.no-video .cut, .no-video .strike { fill: none; stroke-linecap: round; }
+.no-video .cut { stroke: var(--bg); stroke-width: 6; }  /* gap where the strike crosses the frame */
+.no-video .strike { stroke: var(--yellow); stroke-width: 2.6; }
 /* intro: only the face; a small nod at the bottom says "scroll" */
 .chapter.intro { min-height: 100vh; min-height: 100svh; justify-content: center; align-items: flex-end; padding-bottom: 30px; }
 .nod {
