@@ -155,42 +155,62 @@
         </section>
 
         <section class="chapter right play" id="play" data-chapter="play">
-          <div class="card panel">
+          <div class="card panel playground">
             <span class="kicker k-yellow">Playground</span>
             <h2>Your turn. Poke me.</h2>
             <p class="tiny">Drag to spin me. Press my blue key, or hold it to talk.</p>
 
-            <div class="dock">
-              <div class="counter c-done">
-                <span class="label">Done</span>
-                <button id="done-minus" aria-label="Fewer done">−</button>
-                <output id="done-value">I</output>
-                <button id="done-plus" aria-label="More done">+</button>
+            <div class="pg-group" role="group" aria-labelledby="pg-tasks">
+              <div class="pg-head">
+                <p class="pg-label" id="pg-tasks">Tasks</p>
+                <div class="pg-switches">
+                  <button class="switch t-needs" id="toggle-blocked" aria-pressed="false"><span class="knob" aria-hidden="true"></span>Needs you</button>
+                  <button class="switch t-bridge" id="toggle-healthy" aria-pressed="true"><span class="knob" aria-hidden="true"></span>Bridge connected</button>
+                </div>
               </div>
-              <div class="counter c-active">
-                <span class="label">Active</span>
-                <button id="active-minus" aria-label="Fewer active">−</button>
-                <output id="active-value">II</output>
-                <button id="active-plus" aria-label="More active">+</button>
+              <div class="pg-status">
+                <div class="counter c-done">
+                  <span class="label">Done</span>
+                  <button id="done-minus" aria-label="Fewer done">−</button>
+                  <output id="done-value">I</output>
+                  <button id="done-plus" aria-label="More done">+</button>
+                </div>
+                <div class="counter c-active">
+                  <span class="label">Active</span>
+                  <button id="active-minus" aria-label="Fewer active">−</button>
+                  <output id="active-value">II</output>
+                  <button id="active-plus" aria-label="More active">+</button>
+                </div>
               </div>
-              <button class="toggle t-needs" id="toggle-blocked" aria-pressed="false">Needs you</button>
-              <button class="toggle t-bridge" id="toggle-healthy" aria-pressed="true">Bridge</button>
-            </div>
-            <div class="dock">
-              <button data-scene="arrive">＋ New task</button>
-              <button data-scene="finish">✓ Finish one</button>
-              <button data-scene="step">Open last</button>
-              <button id="btn-tap">Tap key</button>
-              <button id="btn-hold" class="hold">Hold to talk</button>
-              <button id="btn-clap">👏 Clap</button>
-              <button id="btn-flip">↻ Flip</button>
-              <button id="btn-blueprint" aria-pressed="false">Blueprint</button>
-              <button id="btn-sound" aria-pressed="true" title="Attention chime">🔔</button>
             </div>
 
-            <div class="tabs" id="library-tabs" role="tablist" aria-label="Performances"></div>
-            <div class="clips" id="library"></div>
-            <div class="swatches" id="swatches" role="group" aria-label="Shell color"></div>
+            <div class="pg-group" role="group" aria-labelledby="pg-try">
+              <p class="pg-label" id="pg-try">Try it</p>
+              <div class="pg-actions">
+                <button data-scene="arrive"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New task</button>
+                <button data-scene="finish"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Finish one</button>
+                <button data-scene="step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h4l1.5 2.5h5L16 13h4"/><path d="M4 13l2.5-7h11L20 13v5.5H4z"/></svg>Open last</button>
+                <button id="btn-tap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg>Tap key</button>
+                <button id="btn-hold" class="hold"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg>Hold to talk</button>
+                <button id="btn-clap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v3.2M12 17.3v3.2M3.5 12h3.2M17.3 12h3.2M6 6l2.3 2.3M15.7 15.7L18 18M6 18l2.3-2.3M15.7 8.3L18 6"/></svg>Clap</button>
+                <button id="btn-flip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4v4.2h-4.2"/></svg>Flip</button>
+                <button id="btn-blueprint" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15.8L15.8 4l4.2 4.2L8.2 20z"/><path d="M7.4 12.4l1.8 1.8M10.4 9.4l1.8 1.8M13.4 6.4l1.8 1.8"/></svg>Blueprint</button>
+              </div>
+            </div>
+
+            <div class="pg-group" role="group" aria-labelledby="pg-moods">
+              <div class="pg-head">
+                <p class="pg-label" id="pg-moods">Moods</p>
+                <div class="segmented" id="library-tabs" role="tablist" aria-label="Moods"></div>
+              </div>
+              <div class="clips" id="library"></div>
+            </div>
+
+            <div class="pg-foot">
+              <span class="pg-label">Shell</span>
+              <div class="swatches" id="swatches" role="group" aria-label="Shell color"></div>
+              <button class="switch" id="btn-sound" aria-pressed="true" title="Attention chime"><span class="knob" aria-hidden="true"></span>Chime</button>
+            </div>
           </div>
         </section>
       </div>

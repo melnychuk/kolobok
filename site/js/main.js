@@ -13,7 +13,7 @@ const MODE_LABEL = {
   working: "Working", waiting: "Needs you", finished: "Finished", listening: "Listening",
   sleeping: "Sleeping", idle: "Idle", offline: "Bridge offline",
 };
-const STATE_LABEL = ["Thinking", "Completion", "Request", "Listening"];
+const STATE_LABEL = ["Thinking", "Done", "Needs you", "Listening"];
 
 function roman(n) {
   if (n <= 0) return "–";
@@ -585,7 +585,11 @@ async function main() {
     t.role = "tab";
     t.dataset.state = s;
     t.className = `tab tab-${name}`;
-    t.textContent = `${STATE_LABEL[s]} · ${avatar.clips[s].length}`;
+    const count = document.createElement("span");
+    count.className = "n";
+    count.textContent = avatar.clips[s].length;
+    t.append(STATE_LABEL[s], count);
+    t.setAttribute("aria-label", `${STATE_LABEL[s]}, ${avatar.clips[s].length} moods`);
     t.onclick = () => { current = s; renderLibrary(); };
     tabs.append(t);
   });

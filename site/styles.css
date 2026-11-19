@@ -195,47 +195,74 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 .specs li { padding: 10px 14px; border-radius: 14px; background: #0b1f3acc; border: 1px solid #9fd2ff33; color: #c7d8f0; font-size: 15px; }
 .specs b { color: var(--sky); margin-right: 4px; }
 
-/* playground card */
+/* playground card: each group gets its own kind of control so status,
+   actions, moods and clips never read as one cloud of pills */
 .card.panel { max-width: 520px; padding: 22px; border-radius: 28px; background: #0c0e1acc; border: 1px solid var(--line); backdrop-filter: blur(16px); box-shadow: 0 30px 60px -30px #000; }
-.card.panel h2 { margin-top: 10px; }
-.dock { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
-.counter { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 14px; background: var(--c); color: #06070b; }
+.card.panel h2 { margin-top: 10px; margin-bottom: 6px; }
+.pg-group, .pg-foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.card .pg-label { margin: 0 0 9px; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: #8a93ad; }
+/* Tasks: the two status steppers in their own colours, then real switches */
+.pg-status { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.counter { display: flex; align-items: center; justify-content: space-between; gap: 2px; padding: 4px; border-radius: 14px; background: var(--c); color: #06070b; }
 .c-done { --c: var(--green); }
 .c-active { --c: var(--blue); }
-.counter .label { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; padding: 0 6px 0 8px; opacity: .75; }
+.counter .label { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; padding: 0 2px 0 8px; opacity: .75; margin-right: auto; }
 .counter button { width: 28px; height: 28px; border: 0; border-radius: 10px; background: #0000001f; font-size: 17px; font-weight: 800; line-height: 1; color: #06070b; }
 .counter button:hover { background: #00000033; }
 .counter output { min-width: 40px; text-align: center; font: 800 19px var(--display); letter-spacing: .04em; }
-.dock > button, .toggle {
-  border: 1px solid var(--line); background: #ffffff0a; border-radius: 12px; padding: 6px 11px; font-size: 14px;
-  transition: background .2s, transform .12s, border-color .2s, color .2s;
+/* A group's label row may carry its secondary controls on the right. */
+.pg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; margin-bottom: 10px; }
+.card .pg-head .pg-label { margin: 0; }
+.pg-switches { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.switch { display: inline-flex; align-items: center; gap: 9px; border: 0; background: none; padding: 2px 0; font-size: 14px; color: var(--muted); transition: color .2s; }
+.switch:hover { color: var(--ink); }
+.switch .knob { position: relative; flex: none; width: 30px; height: 18px; border-radius: 99px; background: #ffffff22; transition: background .2s; }
+.switch .knob::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #c9cfe0; transition: transform .25s cubic-bezier(.3, 1.4, .5, 1), background .2s; }
+.switch[aria-pressed=true] { color: var(--ink); }
+.switch[aria-pressed=true] .knob { background: var(--green); }
+.switch[aria-pressed=true] .knob::after { transform: translateX(12px); background: #fff; }
+.t-needs[aria-pressed=true] .knob { background: var(--yellow); }
+/* Try it: an even grid of icon tiles */
+.pg-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.pg-actions button {
+  display: flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 6px;
+  border: 1px solid var(--line); border-radius: 14px; background: #ffffff06; font-size: 12.5px; line-height: 1.2; color: #cfd5e6;
+  transition: background .2s, color .2s, transform .12s, border-color .2s;
 }
-.dock > button:hover { background: #ffffff18; }
-.dock > button:active { transform: scale(.95); }
-.toggle::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; background: #ffffff40; vertical-align: 1px; }
-.t-needs[aria-pressed=true] { background: var(--yellow); color: #111; border-color: transparent; }
-.t-needs[aria-pressed=true]::before { background: var(--coral); }
-.t-bridge[aria-pressed=true]::before { background: var(--green); box-shadow: 0 0 8px var(--green); }
-.t-bridge[aria-pressed=false] { color: var(--muted); }
+.pg-actions button:hover { background: #ffffff12; color: var(--ink); }
+.pg-actions button:active { transform: scale(.96); }
+.pg-actions svg { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .hold { user-select: none; -webkit-user-select: none; touch-action: none; }
-.hold.on { background: var(--lilac) !important; color: #140f2b; }
-#btn-blueprint[aria-pressed=true] { background: var(--sky); color: #0b1f3a; }
-#btn-sound[aria-pressed=false] { opacity: .5; text-decoration: line-through; }
-
-.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 10px; }
-.tabs [role=tab] { border: 1px solid var(--line); background: #ffffff08; border-radius: 99px; padding: 5px 12px; font-size: 13px; color: var(--muted); transition: background .2s, color .2s; }
-.tabs [aria-selected=true] { background: var(--eye); color: #06070b; border-color: transparent; font-weight: 600; }
-.tab-thinking[aria-selected=true] { background: var(--blue); color: #fff; }
-.tab-done[aria-selected=true] { background: var(--green); }
-.tab-attention[aria-selected=true] { background: var(--yellow); }
-.tab-listening[aria-selected=true] { background: var(--lilac); }
-.clips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 76px; align-content: flex-start; }
-.clip { border: 1px solid var(--line); background: #ffffff07; border-radius: 10px; padding: 5px 10px; font-size: 14px; transition: background .2s, border-color .2s, transform .15s; animation: pop .3s backwards cubic-bezier(.3, 1.6, .5, 1); }
-.clip:hover { background: #ffffff14; transform: translateY(-1px); }
-.clip.playing { border-color: var(--mood); background: color-mix(in srgb, var(--mood) 22%, transparent); }
-@keyframes pop { from { opacity: 0; transform: scale(.9); } }
-.swatches { display: flex; gap: 8px; margin-top: 16px; }
-.swatch { width: 26px; height: 26px; border-radius: 50%; border: 0; padding: 0; background: conic-gradient(var(--k) 0 25%, var(--c) 0); box-shadow: inset 0 0 0 1px #ffffff30; transition: transform .2s cubic-bezier(.3, 1.6, .5, 1); }
+.pg-actions .hold.on { background: var(--lilac); border-color: transparent; color: #140f2b; }
+.pg-actions #btn-blueprint[aria-pressed=true] { background: var(--sky); border-color: transparent; color: #0b1f3a; }
+/* Moods: one segmented control, then a plain list of clips to play */
+.segmented { flex: 1; max-width: 380px; display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: #ffffff0b; }
+.segmented [role=tab] { flex: 1; border: 0; background: none; border-radius: 9px; padding: 6px 4px; font-size: 13px; color: var(--muted); white-space: nowrap; transition: background .2s, color .2s; }
+.segmented [role=tab]:hover { color: var(--ink); }
+.segmented .n { margin-left: 5px; font-size: 11px; opacity: .6; }
+.segmented [aria-selected=true] { background: var(--eye); color: #06070b; font-weight: 600; }
+.segmented .tab-thinking[aria-selected=true] { background: var(--blue); color: #fff; }
+.segmented .tab-done[aria-selected=true] { background: var(--green); }
+.segmented .tab-attention[aria-selected=true] { background: var(--yellow); }
+.segmented .tab-listening[aria-selected=true] { background: var(--lilac); }
+.clips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 6px; min-height: 90px; align-content: start; }
+.clip {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 8px; border: 0; border-radius: 8px; background: none;
+  text-align: left; font-size: 13.5px; color: #cfd5e6; white-space: nowrap;
+  transition: background .2s, color .2s; animation: pop .3s backwards cubic-bezier(.3, 1.6, .5, 1);
+}
+.clip::before { content: ""; flex: none; border-left: 6px solid currentColor; border-block: 4px solid transparent; opacity: .4; transition: opacity .2s; }
+.clip:hover { background: #ffffff0d; color: var(--ink); }
+.clip:hover::before { opacity: .8; }
+.clip.playing { background: color-mix(in srgb, var(--mood) 20%, transparent); color: var(--ink); }
+.clip.playing::before { opacity: 1; color: var(--mood); }
+@keyframes pop { from { opacity: 0; transform: scale(.94); } }
+/* Shell colour and the chime, in one quiet footer row */
+.pg-foot { display: flex; align-items: center; gap: 12px; }
+.card .pg-foot .pg-label { margin: 0; }
+.pg-foot .switch { margin-left: auto; }
+.swatches { display: flex; gap: 8px; }
+.swatch { width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; background: conic-gradient(var(--k) 0 25%, var(--c) 0); box-shadow: inset 0 0 0 1px #ffffff30; transition: transform .2s cubic-bezier(.3, 1.6, .5, 1); }
 .swatch:hover { transform: scale(1.15); }
 .swatch[aria-pressed=true] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--eye); }
 
@@ -253,6 +280,9 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 .flow li:nth-child(3) .step { background: var(--coral); }
 .flow li:nth-child(4) .step { background: var(--green); }
 .setup { margin-top: 28px; padding: 22px; border-radius: 28px; border: 1px solid var(--line); background: #ffffff06; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 10px; }
+.tabs [role=tab] { border: 1px solid var(--line); background: #ffffff08; border-radius: 99px; padding: 5px 12px; font-size: 13px; color: var(--muted); transition: background .2s, color .2s; }
+.tabs [aria-selected=true] { background: var(--eye); color: #06070b; border-color: transparent; font-weight: 600; }
 .setup .tabs { margin-top: 0; }
 .setup .tabs [role=tab] { font-size: 15px; padding: 7px 14px; }
 .setup p { color: var(--muted); margin: 6px 0 14px; }
@@ -306,15 +336,20 @@ footer p { margin: 0; }
   .bp-tag { font-size: 9px; padding: 1px 5px; }
   .card.panel { padding: 16px; }
   .card.panel h2 { font-size: 26px; margin: 8px 0 4px; }
-  .dock { gap: 6px; margin-top: 8px; }
-  .dock > button, .toggle { font-size: 13px; padding: 5px 9px; }
+  .pg-group, .pg-foot { margin-top: 12px; padding-top: 10px; }
+  .card .pg-label { margin-bottom: 7px; }
   .counter button { width: 24px; height: 24px; }
-  .counter output { min-width: 32px; font-size: 16px; }
-  .card.panel .tabs, .clips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
-  .card.panel .tabs { margin-top: 12px; }
-  .clips { min-height: 0; padding-bottom: 2px; }
-  .tabs [role=tab], .clip { flex: none; }
-  .swatches { margin-top: 12px; }
+  .counter output { min-width: 30px; font-size: 16px; }
+  .pg-head { flex-wrap: wrap; margin-bottom: 8px; }
+  .segmented { flex-basis: 100%; max-width: none; }
+  .switch { font-size: 13px; }
+  .pg-actions { gap: 4px; }
+  .pg-actions button { flex-direction: column; padding: 8px 2px 7px; gap: 4px; font-size: 11px; border-radius: 12px; }
+  .pg-actions svg { width: 18px; height: 18px; }
+  .segmented [role=tab] { font-size: 12px; padding: 5px 2px; }
+  .segmented .n { display: none; }
+  .clips { display: flex; overflow-x: auto; scrollbar-width: none; min-height: 0; margin: 0 -16px; padding: 0 16px 2px; }
+  .clip { flex: none; }
   .flow { grid-template-columns: 1fr 1fr; }
   .toast { bottom: 20px; }
 }
