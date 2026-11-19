@@ -27,7 +27,15 @@ Live demo with the real firmware renderer compiled to WebAssembly:
 
 ## Install
 
-On Linux or macOS, one line installs the bridge as a login service (no sudo):
+Easiest: paste this into your coding agent (Copilot CLI, Pi, …). The
+[agent guide](site/install.md) tells it how to check your machine, ask before
+flashing or using sudo, run the installer and verify the Stick with you:
+
+```text
+Set up my Copilot Stick S3 (the M5Stack StickS3 status buddy for my coding agents). Follow https://melnychuk.github.io/stick-s3/install.md: check my machine, ask me before flashing the firmware or running anything with sudo, then verify it with me.
+```
+
+Or, on Linux or macOS, one line installs the bridge as a login service (no sudo):
 
 ```sh
 curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash

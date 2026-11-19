@@ -72,8 +72,8 @@
             <h1>Your agents,<br><span class="squiggle">with a face.</span></h1>
             <p class="lead">A tiny desk buddy that shows what your coding agents are up to, at a glance.</p>
             <p class="realdeal"><span class="chip">not a video</span> That's the real firmware renderer, compiled to WebAssembly and living in the stick.</p>
-<pre data-copy class="install"><code>curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash</code></pre>
-            <p class="tiny install-note">Linux or macOS · <a href="#setup">firmware and other options</a></p>
+<pre data-copy class="install"><code>Set up my Copilot Stick S3 (the M5Stack StickS3 status buddy for my coding agents). Follow https://melnychuk.github.io/stick-s3/install.md: check my machine, ask me before flashing the firmware or running anything with sudo, then verify it with me.</code></pre>
+            <p class="tiny install-note">Paste into your coding agent (Linux or macOS) · <a href="#setup">or install it yourself</a></p>
           </div>
         </section>
 
@@ -208,11 +208,16 @@
       <p class="sub">Firmware, bridges, docs and this site are open source (MIT) on <a href="https://github.com/melnychuk/stick-s3">GitHub</a>.</p>
       <div class="setup" data-tabs>
         <div class="tabs" role="tablist">
-          <button role="tab" aria-selected="true" data-target="install">Install</button>
+          <button role="tab" aria-selected="true" data-target="agent">With an agent</button>
+          <button role="tab" aria-selected="false" data-target="install">Install script</button>
           <button role="tab" aria-selected="false" data-target="flash">Flash firmware</button>
           <button role="tab" aria-selected="false" data-target="manual">By hand</button>
         </div>
-        <div data-panel="install">
+        <div data-panel="agent">
+          <p>Paste this into Copilot CLI, Pi or any coding agent. <a href="install.md">install.md</a> tells it how to check your setup, ask before flashing or enabling dictation, run the installer and verify the Stick with you.</p>
+<pre data-copy><code>Set up my Copilot Stick S3 (the M5Stack StickS3 status buddy for my coding agents). Follow https://melnychuk.github.io/stick-s3/install.md: check my machine, ask me before flashing the firmware or running anything with sudo, then verify it with me.</code></pre>
+        </div>
+        <div data-panel="install" hidden>
           <p>Linux or macOS. Downloads the bridge to <code>~/.local/share/stick-s3</code>, finds your Herdr setup and starts it at login. No sudo; nothing leaves your machine.</p>
 <pre data-copy><code>curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash
 

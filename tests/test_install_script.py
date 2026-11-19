@@ -4,6 +4,7 @@ real service, serial device or flashing is touched."""
 import hashlib
 import json
 import plistlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -225,6 +226,25 @@ class InstallerTest(unittest.TestCase):
         result = self.run_installer("--bogus")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Unknown option", result.stderr)
+
+
+class AgentGuideTest(unittest.TestCase):
+    """site/install.md must only tell agents to use options the script has."""
+
+    def test_guide_options_exist(self):
+        guide = (ROOT / "site/install.md").read_text()
+        usage = subprocess.run(["bash", str(INSTALLER), "--help"], capture_output=True,
+                               text=True, timeout=10).stdout
+        options = set(re.findall(r"(?<![\w-])--[a-z][a-z-]+", guide))
+        known_other = {"--version", "--user", "--no-pager", "--json"}  # other tools' flags
+        missing = sorted(o for o in options - known_other if o not in usage)
+        self.assertEqual(missing, [])
+        for required in ("--flash", "--yes", "--dictation", "--uninstall"):
+            self.assertIn(required, guide)
+
+    def test_site_prompt_points_at_the_guide(self):
+        page = (ROOT / "site/index.html").read_text()
+        self.assertGreaterEqual(page.count("https://melnychuk.github.io/stick-s3/install.md"), 2)
 
 
 if __name__ == "__main__":

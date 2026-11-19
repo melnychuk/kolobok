@@ -47,10 +47,12 @@ STICK_S3_HERDR_HELPER, STICK_S3_AGENTS_PLUGIN.
 EOF
 }
 
-say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+# Colours only on a terminal: agents and logs get plain text.
+if [[ -t 2 && -z ${NO_COLOR:-} ]]; then B=$'\033[1;34m' Y=$'\033[1;33m' R=$'\033[1;31m' N=$'\033[0m'; else B="" Y="" R="" N=""; fi
+say() { printf '%s==>%s %s\n' "$B" "$N" "$*"; }
 note() { printf '    %s\n' "$*"; }
-warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
-die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+warn() { printf '%swarning:%s %s\n' "$Y" "$N" "$*" >&2; }
+die() { printf '%serror:%s %s\n' "$R" "$N" "$*" >&2; exit 1; }
 
 confirm() {
   [[ $YES == 1 ]] && return 0

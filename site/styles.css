@@ -228,7 +228,7 @@ pre { position: relative; margin: 0; padding: 20px 22px; border-radius: 18px; ba
 pre code { font-size: inherit; color: #d6def5; }
 .hero .card:has(pre.install) { max-width: 600px; }
 .hero pre.install { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding: 10px 10px 10px 16px; font-size: 12px; overflow: hidden; }
-.hero pre.install code { flex: 1; min-width: 0; overflow-x: auto; white-space: pre; scrollbar-width: none; }
+.hero pre.install code { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .hero pre.install .copy-btn { position: static; flex: none; }
 .card .install-note { margin: 8px 0 0; }
 .install-note code { color: var(--eye); }
@@ -257,7 +257,6 @@ footer p { margin: 0; }
   .chapter.right .card { margin-right: 0; }
   .card h2 { font-size: 30px; margin: 10px 0 8px; }
   .card p { font-size: 16px; }
-  .hero pre.install code { white-space: normal; overflow-wrap: anywhere; }
   h1 { font-size: 46px; margin-bottom: 12px; }
   .eyebrow { font-size: 10.5px; margin-bottom: 12px; padding: 4px 12px 4px 9px; gap: 7px; border-radius: 12px; }
   .chapter.intro { padding-bottom: 26px; }
