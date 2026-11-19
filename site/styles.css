@@ -47,6 +47,7 @@ body::after {
 .nav nav a { text-decoration: none; color: var(--muted); padding: 6px 12px; border-radius: 99px; font-size: 15px; transition: color .2s, background .2s; }
 .nav nav a:hover { color: var(--ink); background: #ffffff10; }
 .nav nav a.pill { color: #06070b; background: var(--eye); font-weight: 600; }
+.nav nav a.gh { display: inline-flex; align-items: center; gap: 7px; }
 
 /* ---------- story: pinned stage + scrolling chapters ---------- */
 .story { position: relative; }
@@ -242,7 +243,8 @@ footer p { margin: 0; }
 /* ---------- phones: stick on top, copy below ---------- */
 @media (max-width: 860px) {
   .nav { padding: 10px 16px; }
-  .nav nav a:not(.pill) { display: none; }
+  .nav nav a:not(.pill):not(.gh) { display: none; }
+  .nav nav a.gh span { display: none; }
   .chapter, .chapter.right { justify-content: center; align-items: flex-end; padding: 0 18px 92px; min-height: 100vh; min-height: 100svh; }
   .chapter.play { min-height: 110svh; align-items: flex-end; }
   .card, .hero .card { max-width: 560px; width: 100%; padding: 18px 20px; border-radius: 22px; background: #0b0d18d9; backdrop-filter: blur(14px); border: 1px solid var(--line); }
