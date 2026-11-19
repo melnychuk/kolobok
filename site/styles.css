@@ -144,6 +144,7 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 .lead { font-size: clamp(19px, 1.6vw, 23px) !important; color: #d6dcef !important; }
 .card .realdeal { display: flex; align-items: center; gap: 12px; font-size: 15px; line-height: 1.45; color: var(--muted); }
 /* Two text lines tall (15px x 1.45 x 2). */
+.card .realdeal b { color: var(--ink); font-weight: 600; }
 .realdeal .no-video { flex: none; width: 44px; height: 44px; color: #aab3cf; }
 .no-video .cut, .no-video .strike { fill: none; stroke-linecap: round; }
 .no-video .cut { stroke: var(--bg); stroke-width: 6; }  /* gap where the strike crosses the frame */
