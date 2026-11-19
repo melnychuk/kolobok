@@ -84,12 +84,22 @@ struct HeaderAvatar {
   preview.step(ms);
   awakeEyeWidth=scene.eyeWidth;awakeEyeHeight=scene.eyeHeight;
   const float sleepTarget=mode==avatar_behavior::Mode::sleeping?1:0;
-  scene.sleep=approach(scene.sleep,sleepTarget,dt,sleepTarget?.7f:.18f);
+  // Like firmware, a startle snaps the sleeping layout open (35ms) instead
+  // of the ordinary slow wake.
+  scene.sleep=approach(scene.sleep,sleepTarget,dt,
+                       sleepTarget?.7f:preview.startle.active?.035f:.18f);
   scene.eyeWidth*=avatar_scene::mix(1,.65f,scene.sleep);
   scene.eyeHeight=avatar_scene::mix(scene.eyeHeight,4,scene.sleep);
   scene.eyeY+=8*scene.sleep;
   initialized=true;
   preview.render(false,background);
+ }
+ // Synthetic loud-noise startle (no microphone here). As on the device, it
+ // wakes a dozing face: hold ordinary idle for 4s, then it dozes off again.
+ void startle(float side) {
+  preview.startle.notify(now,1,side<0?-1:1);
+  preview.surface.kick(0,1);
+  idleSince=now;
  }
 };
 } // namespace

@@ -90,6 +90,7 @@ export class Device {
     this.flipAngle = 0;
     this.pressDepth = 0;
     this.pressed = false;
+    this.shakeAt = -1; // seconds; a loud noise rattles the stick briefly
     this.glow = new THREE.Color(0x3b82f6);
     this.glowTarget = new THREE.Color(0x3b82f6);
     this.reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -639,6 +640,11 @@ export class Device {
     return d.from + (1 - d.from) * e;
   }
 
+  // A short, decaying rattle that sells a loud clap. Skipped for reduced motion.
+  shake() {
+    if (!this.reduceMotion) this.shakeAt = performance.now() / 1000;
+  }
+
   resize() {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (!w || !h) return;
@@ -703,8 +709,13 @@ export class Device {
     const life = t - this.bornAt;
     const hover = this.reduceMotion ? 0 : Math.min(1, life / 2.5);
     const bob = Math.sin(life * 1.4) * 0.7 * hover;
-    this.root.position.y = bob;
-    this.root.rotation.z = Math.sin(life * 0.7) * 0.012 * hover;
+    // Rattle: ~26Hz, decaying over ~0.45s; mm and radians.
+    const since = this.shakeAt < 0 ? 1 : t - this.shakeAt;
+    const rattle = since < 0.45 ? Math.exp(-since / 0.12) : 0;
+    const phase = since * Math.PI * 2 * 26;
+    this.root.position.x = Math.sin(phase) * 0.9 * rattle;
+    this.root.position.y = bob + Math.sin(phase * 1.3 + 1) * 0.35 * rattle;
+    this.root.rotation.z = Math.sin(life * 0.7) * 0.012 * hover + Math.sin(phase * 0.8 + 2) * 0.03 * rattle;
     this.shadow.scale.setScalar(1 - bob * 0.03);
     this.shadow.material.opacity = (1 - this.blueprint) * (0.85 - bob * 0.08) * this.view.reveal;
     this.glow.lerp(this.glowTarget, 0.06);

@@ -71,11 +71,11 @@ __attribute__((export_name("stick_button"))) void stick_button(int voiceEnd) {
  if(!avatar)return;
  avatar->preview.button.notify(avatar->now,voiceEnd!=0);
 }
-// Loud-noise startle (the device uses its microphone level detector).
+// Loud-noise startle (the device uses its microphone level detector). It
+// also wakes a dozing face for a few seconds, like the device.
 __attribute__((export_name("stick_startle"))) void stick_startle(float side) {
  if(!avatar)return;
- avatar->preview.startle.notify(avatar->now,1,side<0?-1:1);
- avatar->preview.surface.kick(0,1);
+ avatar->startle(side);
 }
 __attribute__((export_name("stick_play"))) void stick_play(int state,int index) {
  if(state<0||state>3)return;

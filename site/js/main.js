@@ -88,7 +88,7 @@ async function main() {
       pressed: false,
       on(name, fn) { handlers[name] = fn; },
       press(down) { this.pressed = down; handlers[down ? "buttondown" : "buttonup"]?.(); },
-      setShell() {}, setBlueprint() {}, setGlow() {}, flip() {}, setPose() {}, setStickyDrag() {},
+      setShell() {}, setBlueprint() {}, setGlow() {}, flip() {}, setPose() {}, setStickyDrag() {}, shake() {},
       render() {
         if (!avatar.dirty) return;
         image.data.set(avatar.rgba);
@@ -273,6 +273,11 @@ async function main() {
         // idle; with nothing left to do it dozes off ~4s later.
         calm({ active: 0, done: 1 });
         later(() => set({ done: 0 }), 2400);
+        // Once it is properly asleep, a loud clap jolts it awake, wide-eyed;
+        // it looks around, then dozes off again and the clap comes back.
+        const clap = () => { if (avatar.mode === "sleeping") { avatar.startle(); device.shake(); } };
+        later(clap, 11500);
+        every(clap, 12000);
       },
     },
     anatomy: {
@@ -386,7 +391,7 @@ async function main() {
   };
   $$("[data-scene]").forEach((el) => (el.onclick = () => SCENES[el.dataset.scene]?.()));
   $("#btn-tap").onclick = () => avatar.tap();
-  $("#btn-clap").onclick = () => { avatar.startle(); toast("Startled! (opt-in loud-noise detector)"); };
+  $("#btn-clap").onclick = () => { avatar.startle(); device.shake(); toast("Startled! (opt-in loud-noise detector)"); };
   $("#btn-flip").onclick = () => { device.flip(); toast("The IMU turns the face upright"); };
   let blueprintPinned = false;
   $("#btn-blueprint").onclick = (e) => {
