@@ -200,6 +200,7 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 .card.panel { max-width: 520px; padding: 22px; border-radius: 28px; background: #0c0e1acc; border: 1px solid var(--line); backdrop-filter: blur(16px); box-shadow: 0 30px 60px -30px #000; }
 .card.panel h2 { margin-top: 10px; margin-bottom: 6px; }
 .pg-group, .pg-foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.segmented.pg-tabs { display: none; }
 .card .pg-label { margin: 0 0 9px; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: #8a93ad; }
 /* Tasks: the two status steppers in their own colours, then real switches */
 .pg-status { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -321,12 +322,19 @@ footer p { margin: 0; }
   .card h2 { font-size: 30px; margin: 10px 0 8px; }
   .card p { font-size: 16px; }
   h1 { font-size: 46px; margin-bottom: 12px; }
-  .eyebrow { font-size: 10.5px; margin-bottom: 12px; padding: 4px 12px 4px 9px; gap: 7px; border-radius: 12px; }
+  .eyebrow, .card .eyebrow { font-size: 10.5px; margin-bottom: 12px; padding: 4px 12px 4px 9px; gap: 7px; border-radius: 12px; white-space: nowrap; }
+  /* Opening copy: compact, like the later chapters, so the stick stays in
+     view above it. The prompt keeps one line; Copy still copies all of it. */
+  .hero .card .lead { font-size: 16px !important; margin-bottom: 0; }
+  .hero .card .realdeal { display: none; }
+  .hero pre.install { margin-top: 12px; padding: 5px 5px 5px 14px; }
+  .hero pre.install code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+  .card .install-note { font-size: 12.5px; }
   .scene-pin { justify-content: center; align-items: flex-end; padding: 0 18px 92px; }
   .nod { bottom: 26px; }
   .js-chapters .chapter.pinned { min-height: 130svh; }
   .js-chapters .chapter.left.pinned .card, .js-chapters .chapter.right.pinned .card {
-    top: auto; bottom: 92px; left: 18px; right: 18px; translate: none; margin: 0 auto;
+    top: auto; bottom: 92px; left: 18px; right: 18px; width: auto; translate: none; margin: 0 auto;
   }
   /* The centred heading floats alone; the panel is scrubbed in with the rest. */
   .hero .card { background: rgb(11 13 24 / calc(.85 * var(--chrome, 1))); border-color: rgb(255 255 255 / calc(.1 * var(--chrome, 1))); backdrop-filter: blur(calc(14px * var(--chrome, 1))); }
@@ -336,6 +344,14 @@ footer p { margin: 0; }
   .bp-tag { font-size: 9px; padding: 1px 5px; }
   .card.panel { padding: 16px; }
   .card.panel h2 { font-size: 26px; margin: 8px 0 4px; }
+  .card.panel > .tiny { margin-bottom: 0; }
+  /* Playground: one group of controls at a time, picked from .pg-tabs; each
+     pane gets the same height so the panel never jumps under the stick. */
+  .segmented.pg-tabs { display: flex; margin-top: 12px; }
+  .playground .pg-pane { margin-top: 12px; padding-top: 0; border-top: 0; min-height: 108px; }
+  .playground .pg-pane:not(.is-current) { display: none; }
+  .playground .pg-pane > .pg-label, .playground .pg-pane > .pg-head > .pg-label { display: none; }
+  .playground .pg-foot.pg-pane { align-items: flex-start; }
   .pg-group, .pg-foot { margin-top: 12px; padding-top: 10px; }
   .card .pg-label { margin-bottom: 7px; }
   .counter button { width: 24px; height: 24px; }

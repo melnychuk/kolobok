@@ -306,7 +306,7 @@ async function main() {
 
   // Screen-space placement: beside the copy on wide screens, above it on phones.
   const shift = (section) => {
-    if (narrow()) return { sx: 0, sy: section.dataset.chapter === "play" ? 0.3 : 0.2 };
+    if (narrow()) return { sx: 0, sy: 0.2 };
     return { sx: section.classList.contains("left") ? 0.19 : -0.19, sy: 0 };
   };
 
@@ -671,6 +671,16 @@ $$("pre[data-copy]").forEach((pre) => {
     setTimeout(() => (b.textContent = "Copy"), 1400);
   };
   pre.append(b);
+});
+// Phones show one playground group at a time (.pg-tabs, styles.css).
+$$(".pg-tabs").forEach((bar) => {
+  const tabs = $$("[role=tab]", bar);
+  tabs.forEach((t) => t.addEventListener("click", () => {
+    tabs.forEach((x) => {
+      x.setAttribute("aria-selected", x === t);
+      document.getElementById(x.dataset.pane)?.classList.toggle("is-current", x === t);
+    });
+  }));
 });
 $$("[data-tabs]").forEach((group) => {
   const buttons = $$("[role=tab]", group);

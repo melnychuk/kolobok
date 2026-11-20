@@ -177,8 +177,16 @@
             <span class="kicker k-yellow">Playground</span>
             <h2>Your turn. Poke me.</h2>
             <p class="tiny">Drag to spin me. Press my blue key, or hold it to talk.</p>
+            <!-- Phones only (styles.css): one group of controls at a time, so
+                 the panel leaves room for the stick. Wider screens show all. -->
+            <div class="segmented pg-tabs" role="tablist" aria-label="Controls">
+              <button role="tab" data-pane="pg-pane-tasks" aria-controls="pg-pane-tasks" aria-selected="false">Tasks</button>
+              <button role="tab" data-pane="pg-pane-try" aria-controls="pg-pane-try" aria-selected="true">Try it</button>
+              <button role="tab" data-pane="pg-pane-moods" aria-controls="pg-pane-moods" aria-selected="false">Moods</button>
+              <button role="tab" data-pane="pg-pane-shell" aria-controls="pg-pane-shell" aria-selected="false">Shell</button>
+            </div>
 
-            <div class="pg-group" role="group" aria-labelledby="pg-tasks">
+            <div class="pg-group pg-pane" id="pg-pane-tasks" role="group" aria-labelledby="pg-tasks">
               <div class="pg-head">
                 <p class="pg-label" id="pg-tasks">Tasks</p>
                 <div class="pg-switches">
@@ -202,7 +210,7 @@
               </div>
             </div>
 
-            <div class="pg-group" role="group" aria-labelledby="pg-try">
+            <div class="pg-group pg-pane is-current" id="pg-pane-try" role="group" aria-labelledby="pg-try">
               <p class="pg-label" id="pg-try">Try it</p>
               <div class="pg-actions">
                 <button data-scene="arrive"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New task</button>
@@ -216,7 +224,7 @@
               </div>
             </div>
 
-            <div class="pg-group" role="group" aria-labelledby="pg-moods">
+            <div class="pg-group pg-pane" id="pg-pane-moods" role="group" aria-labelledby="pg-moods">
               <div class="pg-head">
                 <p class="pg-label" id="pg-moods">Moods</p>
                 <div class="segmented" id="library-tabs" role="tablist" aria-label="Moods"></div>
@@ -224,7 +232,7 @@
               <div class="clips" id="library"></div>
             </div>
 
-            <div class="pg-foot">
+            <div class="pg-foot pg-pane" id="pg-pane-shell">
               <span class="pg-label">Shell</span>
               <div class="swatches" id="swatches" role="group" aria-label="Shell color"></div>
               <button class="switch" id="btn-sound" aria-pressed="true" title="Attention chime"><span class="knob" aria-hidden="true"></span>Chime</button>
