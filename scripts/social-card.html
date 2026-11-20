@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- Link-preview card (Open Graph / Teams / Slack / X) for the Pages site.
+     scripts/render-social-card.sh screenshots this page at 1200x630 into
+     site/social-card.png. The screen is a real frame from site/avatar.wasm. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=block" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #07080f; --ink: #eef2ff; --muted: #a3acc7; --line: #ffffff1a;
+      --blue: #3b82f6; --green: #22c55e; --coral: #f7768e; --yellow: #facc15;
+      --display: "Bricolage Grotesque", system-ui, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+    }
+    html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+    body {
+      position: relative; color: var(--ink); font-family: var(--display);
+      background:
+        radial-gradient(38% 55% at 76% 52%, #3b82f62e, transparent 70%),
+        radial-gradient(90% 80% at 40% 35%, #121629, var(--bg) 72%);
+    }
+    .copy { position: absolute; left: 72px; top: 0; bottom: 0; width: 560px; display: flex; flex-direction: column; justify-content: center; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 26px; letter-spacing: -.01em; margin-bottom: 40px; }
+    .brand-face { display: inline-flex; gap: 5px; align-items: center; justify-content: center; width: 50px; height: 34px; border-radius: 11px; background: #000; box-shadow: inset 0 0 0 2px #cfd6ea; }
+    .brand-face i { width: 10px; height: 13px; border-radius: 3.5px; background: var(--ink); }
+    h1 { margin: 0 0 26px; font-size: 104px; line-height: .9; letter-spacing: -.045em; font-weight: 800; }
+    .squiggle { background: linear-gradient(100deg, var(--green), var(--blue) 45%, var(--coral) 80%, var(--yellow)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .lead { margin: 0 0 34px; font-size: 27px; line-height: 1.3; color: #d6dcef; max-width: 520px; }
+    .url { display: inline-flex; align-items: center; gap: 10px; width: fit-content; padding: 9px 16px 9px 12px; border: 1px solid var(--line); border-radius: 99px; background: #ffffff08; font: 18px var(--mono); color: var(--muted); }
+    .url .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 10px var(--blue); }
+
+    /* A flat take on the StickS3 (charcoal body, blue key) holding the real screen. */
+    .stick { position: absolute; left: 676px; top: 170px; width: 470px; height: 290px; border-radius: 52px; background: linear-gradient(160deg, #464950, #2c2e33 55%, #222428); box-shadow: 0 40px 80px #000a, 0 0 0 1px #ffffff14 inset, 0 2px 0 #ffffff1c inset; transform: rotate(-4deg); }
+    .stick::after { content: ""; position: absolute; right: -14px; top: 92px; width: 16px; height: 106px; border-radius: 0 9px 9px 0; background: linear-gradient(90deg, #1468b0, #1d8fea); box-shadow: 0 0 22px #1d8fea66; }
+    .bezel { position: absolute; inset: 30px; border-radius: 26px; background: #050507; box-shadow: 0 0 0 1px #000 inset, 0 0 40px #3b82f633; display: flex; align-items: center; justify-content: center; }
+    canvas { width: 384px; height: 216px; image-rendering: auto; border-radius: 6px; }
+    .stick .gloss { position: absolute; inset: 30px; border-radius: 26px; background: linear-gradient(155deg, #ffffff14, transparent 40%); pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div class="copy">
+    <div class="brand"><span class="brand-face"><i></i><i></i></span>Copilot Stick S3</div>
+    <h1>Hi! I watch<br><span class="squiggle">your agents.</span></h1>
+    <p class="lead">A tiny desk buddy that shows when your Copilot CLI and Herdr agents are busy, done, or waiting on you.</p>
+    <span class="url"><span class="dot"></span>melnychuk.github.io/stick-s3</span>
+  </div>
+  <div class="stick"><div class="bezel"><canvas id="screen" width="240" height="135"></canvas></div><div class="gloss"></div></div>
+  <script type="module">
+    import { loadAvatar, W, H } from "../site/js/avatar.js";
+    const avatar = await loadAvatar("../site/avatar.wasm");
+    avatar.awake = true;
+    // Two tasks in flight, one finished: shows the face plus both counters.
+    avatar.set({ active: 2, blocked: 0, done: 1 });
+    avatar.advance(6000);
+    const ctx = document.getElementById("screen").getContext("2d");
+    ctx.putImageData(new ImageData(new Uint8ClampedArray(avatar.rgba.buffer), W, H), 0, 0);
+    await document.fonts.ready;
+    document.body.dataset.ready = "1";
+  </script>
+</body>
+</html>
