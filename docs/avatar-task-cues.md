@@ -8,12 +8,15 @@ cues only stage how numerals, colours and acting reveal a snapshot.
 The previous count cues (a 620ms lift-only pop plus a 1.2s facial reaction)
 were almost invisible on the device. `firmware/task_cues.h` adds two authored,
 event-only performances shared by firmware, native previews and the header.
+Directions (dodge away from active, exit/re-entry through the active side,
+step over the done side) come from `firmware/status_sides.h`: active is on the
+left and done on the right.
 
 ## Arrival — the active count rises (2.4s)
 
 | ms | numeral | character |
 |---|---|---|
-| 0–280 | the new letters slide down into view at the top edge | eyes snap up-right toward them |
+| 0–280 | the new letters slide down into view at the top edge | eyes snap up toward them (the active side) |
 | 280–860 | they teeter there (small wobble); old letters slide over to make room | scared: tall narrow eyes, raised lower lids, worried slant, short shiver, body shrinks |
 | 800–930 | — | **jerks aside**: whole character dodges 20px away, wincing |
 | 860–1180 | falls with gravity, three speed lines | peeks back up at it |
@@ -23,7 +26,7 @@ event-only performances shared by firmware, native previews and the header.
 Roman numerals are not positional digits, so the drop depends on the strings:
 
 - **Extension** in the same font (`I→II`, `II→III`, `V→VI`, `X→XI`, …): the old
-  letters slide left by exactly the new letters' advance and only the appended
+  letters slide left (Roman reads left to right on either side) by exactly the new letters' advance and only the appended
   letters fall into the gap. After landing the two parts tile the new label
   exactly (glyph advances are additive).
 - **Rewrite** (`III→IV`, `VIII→IX`, `IX→X`, or a fitted-font change): the whole new
@@ -43,7 +46,7 @@ replay); a rise after landing starts a fresh drop from the landed count.
 | 1190–1300 | full-screen pale flash. Under cover the snapshot swaps, the face leaves offscreen and the layout reflows unseen |
 | 1300–1680 | flash fades to a full green screen |
 | 1330–2180 | the new done numeral **arcs across and flips** (one full card turn: edge-on twice, mirrored back face between) with a light trail and landing ring |
-| 2300–2950 | the face **creeps in from the right**, wary, near eye first |
+| 2300–2950 | the face **creeps back in through the active side** (now the left), wary, near eye first |
 | 2950–3300 | spots the numeral and brightens |
 | 3300–3700 | crouch, **hop**, squash landing (eyes carry the jump; the tall body is mostly offscreen), rim thud |
 | 3700–4150 | happy curved closure, then the usual completion cycle starts (celebration window extended past the return) |
@@ -87,11 +90,13 @@ request releases at once without a cue).
 
 ## Paired arrival makes room
 
-With both counters, the wide face covered the whole top-right corner, so the
+With both counters, the wide face covered the whole active top corner, so the
 new numeral teetered and fell over the black face and the authored 20px jerk
 barely moved it. `Arrival::room()` now measures how far the resting body (layout
 only, neutral pose, no flow) reaches into the falling piece's column above its
-resting place, plus `kClear` = 16px, capped at `kMaxDodge` = 88px. The face
+resting place, plus `kClear` = 16px, capped at `kMaxDodge` = 96px (raised from
+88px when active moved to the left: an appended letter such as II->III now
+falls on the face side of the label, so `fallInner()` needs ~91px there). The face
 backs away from the corner while the numeral slides in (0.04-0.4s) and the
 authored 20px jerk still follows as it lets go; the return is unchanged. Single-
 counter layouts need no extra room and keep the exact 20px jerk. Because the
@@ -105,7 +110,8 @@ Physical timing unverified.
 
 ## Product semantics preserved
 
-- Green-left/blue-right sides, black solid interiors and status-matched outlines.
+- Status sides from `status_sides.h` (blue-left/green-right), black solid
+  interiors and status-matched outlines.
   Resting labels are never scaled; only the transient flip squeezes/mirrors, and
   it grows a fresh 2px outline around the squeezed interior (all outlines before
   all fills).

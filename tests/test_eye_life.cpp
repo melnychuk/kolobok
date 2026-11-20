@@ -70,7 +70,7 @@ int main() {
  for(int s=0;s<4;++s)for(int i=0;i<clipCount(static_cast<State>(s));++i) {
   const Clip& c=clip(static_cast<State>(s),i);
   for(int k=1;k<c.count;++k) {
-   const Pose& a=c.keys[k-1].pose;const Pose& b=c.keys[k].pose;
+   const Pose a=keyPose(c,k-1),b=keyPose(c,k);  // as shown on screen
    const uint32_t length=c.keys[k].ms-c.keys[k-1].ms;
    const float distance=sqrtf((b.x-a.x)*(b.x-a.x)+(b.y-a.y)*(b.y-a.y));
    const float slack=isSaccade(a,b,length)?fminf(.10f*distance,3.0f)+.001f:.001f;

@@ -10,15 +10,18 @@ int main() {
  const uint16_t green=((34&248)<<8)|((197&252)<<3)|(94>>3);
  const uint16_t blue=((59&248)<<8)|((130&252)<<3)|(246>>3);
  const uint16_t coral=((247&248)<<8)|((118&252)<<3)|(142>>3);
+ // Each status color sits on its status_sides screen side.
+ const int doneEdge=status_sides::kDone<0?0:239,activeEdge=239-doneEdge;
+ const int doneStrip=status_sides::kDone<0?24:216,activeStrip=240-doneStrip;
  for(int y=0;y<4;++y) {
-  assert(status_background::color(0,y,green,blue,1,1)==green);
-  assert(status_background::color(239,y,green,blue,1,1)==blue);
+  assert(status_background::color(doneEdge,y,green,blue,1,1)==green);
+  assert(status_background::color(activeEdge,y,green,blue,1,1)==blue);
   const uint16_t middle=status_background::color(120,y,green,blue,1,1);
   assert(middle!=green&&middle!=blue);
-  assert(status_background::color(24,y,green,blue,1,0)==green);
-  assert(status_background::color(216,y,green,blue,0,1)==blue);
-  assert(status_background::color(24,y,green,blue,0,1)==0);
-  assert(status_background::color(24,y,green,coral,0,1,coral,1)==coral);
+  assert(status_background::color(doneStrip,y,green,blue,1,0)==green);
+  assert(status_background::color(activeStrip,y,green,blue,0,1)==blue);
+  assert(status_background::color(doneStrip,y,green,blue,0,1)==0);
+  assert(status_background::color(doneStrip,y,green,coral,0,1,coral,1)==coral);
  }
  // No center seam, even with RGB565 quantization. Compare average dither
  // coverage at the two center columns rather than demanding identical pixels.

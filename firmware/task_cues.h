@@ -5,6 +5,7 @@
 #include "avatar_scene.h"
 #include "count_raster.h"
 #include "roman_counts.h"
+#include "status_sides.h"
 
 // Two staged, noticeable task-count cues shared by firmware, native previews
 // and the header widget. Aggregate counts only: real task state updates at
@@ -22,7 +23,12 @@
 // Transfer (active->done with no old done label, e.g. active I -> done I): the
 // blue backdrop charges with green light, a cartoon starburst flashes the screen
 // green, the new done numeral flips across to the green side, then the face
-// creeps back in from the right and hops home to look at it.
+// creeps back in from the old active side and hops home to look at it.
+//
+// Directions come from status_sides: the drop dodges away from the active
+// side, the transfer exits and re-enters through it, and the step-over plants
+// past the done side. Authored key tables assume the original done-left layout
+// and are flagged so sampling mirrors them when the layout is swapped.
 namespace task_cues {
 using eye_acting::Pose;
 using eye_acting::p;
@@ -63,8 +69,8 @@ constexpr Pose lids(Pose b,float lower,float slant) {
 }
 
 // ---------------------------------------------------------------- arrival
-// Eye keys look up-right (the active side), shiver, jerk aside before the
-// fall, wince on impact, then peek back at the newcomer with relief.
+// Eye keys look up toward the active side (authored on the right), shiver,
+// jerk aside before the fall, wince on impact, then peek back with relief.
 constexpr eye_acting::Key arrivalKeys[]={
  {0,p()},
  {170,p(12,-17,.96f,1.16f,0,0,0,0,0,.98f,1.03f,2,-3,.8f)},
@@ -76,7 +82,8 @@ constexpr eye_acting::Key arrivalKeys[]={
  {1440,p(9,3,1.04f,1.08f,.04f,0,0,0,0,1.02f,1,-3,0,.8f)},
  {1900,p(12,4,1.02f,1.04f,.10f,.06f,.15f,0,0,1,1,-1,0,.8f)},
  {2400,p()}};
-constexpr eye_acting::Clip arrivalClip=eye_acting::makeClip("New task drops in",arrivalKeys);
+constexpr eye_acting::Clip arrivalClip=
+    eye_acting::makeClip("New task drops in",arrivalKeys,eye_acting::authoredDoneLeft);
 struct Arrival {
  static constexpr uint32_t kHang=280,kFall=860,kImpact=1180,kEnd=2400,kBodyLag=90;
  uint32_t started=0;
@@ -120,23 +127,30 @@ struct Arrival {
   // the original 20px jerk.
   const float extra=fmaxf(0,distance-kDodge);
   const float recoil=extra*fmaxf(ramp(t,40,kHang+120),jerk);
-  return -(kDodge*jerk+recoil)*(1-ramp(t,kImpact+260,kEnd-260));
+  return kAway*(kDodge*jerk+recoil)*(1-ramp(t,kImpact+260,kEnd-260));
  }
- static constexpr float kDodge=20,kClear=16,kMaxDodge=88;
- // Left edge of what falls: the appended letters or the whole rewritten label.
- float fallLeft(const count_raster::Font& fromFont,const count_raster::Font& toFont,float restX) const {
+ // kMaxDodge clears an appended letter on the face side of a short label (II->III).
+ static constexpr float kDodge=20,kClear=16,kMaxDodge=96;
+ // The dodge direction: away from the active counter.
+ static constexpr float kAway=static_cast<float>(-status_sides::kActive);
+ // Face-side edge of what falls: the appended letters (always at the end of
+ // the Roman string) or the whole rewritten label.
+ float fallInner(const count_raster::Font& fromFont,const count_raster::Font& toFont,float restX) const {
   char before[10],after[10];
   roman_counts::format(from,before);roman_counts::format(to,after);
+  const float total=count_raster::width(toFont,after);
+  if(kAway>0)return restX+total/2;  // active on the left: the face is to the right
   const size_t kept=strlen(before);
   const bool append=strncmp(after,before,kept)==0&&after[kept]&&(kept==0||&fromFont==&toFont);
-  const float start=restX-count_raster::width(toFont,after)/2;
+  const float start=restX-total/2;
   return append?start+count_raster::width(fromFont,before):start;
  }
- // How far the resting body reaches right of `left` in the rows the numeral
- // falls through (above its resting top). The wide paired face covers the
- // whole column, so a fixed 20px dodge left it falling through the face.
- // Ignores the dodge itself, flow and membranes (kClear covers them).
- static float intrusion(const avatar_scene::Scene& scene,float left,float restTop) {
+ // How far the resting body reaches past the fall column's face-side edge
+ // `inner` in the rows the numeral falls through (above its resting top).
+ // The wide paired face covers the whole column, so a fixed 20px dodge left
+ // it falling through the face. Ignores the dodge itself, flow and membranes
+ // (kClear covers them).
+ static float intrusion(const avatar_scene::Scene& scene,float inner,float restTop) {
   // Layout only: the neutral pose keeps the room steady while the acting
   // squashes and stretches (kClear covers those few pixels).
   avatar_scene::Scene s=scene;s.away=0;s.surface=nullptr;s.body=avatar_scene::neutralPose;
@@ -147,23 +161,32 @@ struct Arrival {
    float ny=(y+.5f-g.cy)/g.ry;
    if(ny>.85f)ny=avatar_scene::mix(ny,.85f,s.corners);
    if(fabsf(ny)>=1)continue;
-   float right=g.cx+g.rx*avatar_scene::profile(fabsf(ny),g.power);
-   if(stretch>0)right+=(right-g.cx)*stretch;
-   worst=fmaxf(worst,right-left);
+   const float half=g.rx*avatar_scene::profile(fabsf(ny),g.power);
+   if(kAway<0) {  // the active column is right of the face
+    float right=g.cx+half;
+    if(stretch>0)right+=(right-g.cx)*stretch;
+    worst=fmaxf(worst,right-inner);
+   } else {
+    float left=g.cx-half;
+    if(stretch<0)left+=(g.cx-left)*stretch;
+    worst=fmaxf(worst,inner-left);
+   }
   }
   return worst;
  }
  // Dodge distance that clears the fall column, never less than authored.
- static float room(const avatar_scene::Scene& scene,float left,float restTop) {
-  return fminf(kMaxDodge,fmaxf(kDodge,intrusion(scene,left,restTop)+kClear));
+ static float room(const avatar_scene::Scene& scene,float inner,float restTop) {
+  return fminf(kMaxDodge,fmaxf(kDodge,intrusion(scene,inner,restTop)+kClear));
  }
  // The body can clear the column further than the eyes may follow: give back
  // up to the extra (beyond authored) dodge so the outer eye stays on screen.
- // eyeLeft is the outer eye's left edge before the dodge. Continuous.
+ // eyeCenter is the eye pair's center and halfSpan the distance to the outer
+ // eye's outer edge, both before the dodge. Continuous.
  static constexpr float kEyeMargin=3;
- static float eyeReturn(float dodge,float eyeLeft) {
-  const float extra=fmaxf(0,-dodge-kDodge);
-  return fminf(extra,fmaxf(0,kEyeMargin-(eyeLeft+dodge)));
+ static float eyeReturn(float dodge,float eyeCenter,float halfSpan) {
+  const float extra=fmaxf(0,kAway*dodge-kDodge);
+  const float margin=kAway<0?eyeCenter-halfSpan+dodge:240-(eyeCenter+halfSpan+dodge);
+  return -kAway*fminf(extra,fmaxf(0,kEyeMargin-margin));
  }
  Pose apply(const Pose& base,uint32_t now,bool body=false) const {
   const uint32_t elapsed=now-started;
@@ -211,7 +234,7 @@ struct Arrival {
     // Knocked down and out toward the screen edge, with gravity.
     const float s=(t-kImpact)/1000.0f;
     const float y=restY+60*s+1100*s*s;
-    if(y-fromFont.capHeight/2.0f<136)text(fromFont,before,restX+38*s,y,false);
+    if(y-fromFont.capHeight/2.0f<136)text(fromFont,before,restX-kAway*38*s,y,false);
    }
   }
   const float cap=toFont.capHeight;
@@ -295,7 +318,9 @@ constexpr eye_acting::Key chargeKeys[]={
  {960,lids(p(13,2,.95f,1.24f,0,0,0,0,0,.95f,1.05f,-5,1,1.1f),.16f,-.18f)},
  {1080,p(8,0,1.06f,.90f,.3f,.3f,0,.95f,.95f,1.08f,.90f,-6,3,1.3f)},
  {1300,p(8,0,1.06f,.90f,.3f,.3f,0,.95f,.95f,1.08f,.90f,-6,3,1.3f)}};
-constexpr eye_acting::Clip chargeClip=eye_acting::makeClip("Charged completion",chargeKeys);
+// Eyes on the charging active numeral (authored on the right).
+constexpr eye_acting::Clip chargeClip=
+    eye_acting::makeClip("Charged completion",chargeKeys,eye_acting::authoredDoneLeft);
 struct Transfer {
  // Charge, starburst, full-cover swap, flip, careful entry, happy hop home.
  static constexpr uint32_t kBurst=1050,kCover=1190,kReveal=1300,kFlip=1330,kLand=2180;
@@ -372,15 +397,17 @@ struct Transfer {
   if(!busy(now))return 0;
   const float t=static_cast<float>(phase(now));
   if(t<kCover)return 0;
-  // Peek so the near eye shows at the right edge, whatever the layout.
-  const float peek=fmaxf(40,226-restCenter);
-  if(t<kEnter)return kHidden;
+  // Leave and re-enter through the old active side. Peek so the near eye
+  // shows 14px inside that screen edge, whatever the layout.
+  const float exit=static_cast<float>(status_sides::kActive);
+  const float peek=fmaxf(40,exit>0?226-restCenter:restCenter-14);
+  if(t<kEnter)return exit*kHidden;
   if(t<kPeek) {
    const float u=unit((t-kEnter)/(kPeek-kEnter));
-   return avatar_scene::mix(kOffscreen,peek,1-(1-u)*(1-u)*(1-u));
+   return exit*avatar_scene::mix(kOffscreen,peek,1-(1-u)*(1-u)*(1-u));
   }
-  if(t<kHop+60)return peek-4*ramp(t,kPeek,kHop+60);
-  return (peek-4)*(1-ramp(t,kHop+60,kHome));
+  if(t<kHop+60)return exit*(peek-4*ramp(t,kPeek,kHop+60));
+  return exit*((peek-4)*(1-ramp(t,kHop+60,kHome)));
  }
  // Full-screen green wash after the flash. With no remaining active numeral
  // it stays until the face is home (its body then covers the unused side).
@@ -407,7 +434,9 @@ struct Transfer {
   if(!busy(now)||!homePending||phase(now)<kHome)return false;
   homePending=false;return true;
  }
- Pose apply(const Pose& base,uint32_t now,bool body=false,float lookX=-14,float lookY=4) const {
+ // lookX/lookY: gaze toward the new done numeral (screen orientation).
+ Pose apply(const Pose& base,uint32_t now,bool body=false,
+            float lookX=14.0f*status_sides::kDone,float lookY=4) const {
   const uint32_t elapsed=now-started;
   const uint32_t t=body?(elapsed>kBodyLag?elapsed-kBodyLag:0):elapsed;
   if(!enabled||t>=kEnd)return base;
@@ -417,7 +446,8 @@ struct Transfer {
    look=eye_acting::sample(chargeClip,t);
    if(t>=500&&t<kBurst)look.x+=.7f*ramp(t,500,kBurst)*sinf(t*.13f); // nervous shiver
   } else {
-   const float lx=fminf(-8,lookX),ly=lookY;
+   // Authored with done on the left (gaze negative), then oriented on sampling.
+   const float lx=fminf(-8,status_sides::kMirrorAuthored?-lookX:lookX),ly=lookY;
    // Careful: narrowed, then spotting the numeral, crouch, jump, land, beam.
    const Pose wary=p(lx-3,ly-2,.94f,.92f,.22f,.18f,0,0,0,.98f,1.02f,-3,0,.6f);
    const Pose spot=p(lx-1,ly,1.06f,1.16f,0,0,.35f,0,0,1,1.04f,-2,-1,.9f);
@@ -431,7 +461,7 @@ struct Transfer {
     {kCover,wary},{kPeek-120,eye_acting::withGaze(wary,lx-4,ly-2)},{kPeek+80,spot},
     {kHop,crouch},{kHop+210,air},{kHome,land},{kHome+150,beam},{kHome+320,glad},
     {kEnd,glad}};
-   look=eye_acting::sample(eye_acting::makeClip("Happy return",keys),t);
+   look=eye_acting::sample(eye_acting::makeClip("Happy return",keys,eye_acting::authoredDoneLeft),t);
   }
   auto result=eye_acting::mix(base,look,weight);
   if(body)result.closeL=result.closeR=0;
@@ -541,13 +571,14 @@ constexpr eye_acting::Key stepKeys[]={
  {1020,p(-2,4,1.08f,.92f,0,0,.85f,.85f,.85f,1.05f,.94f,-1,3,1.1f)},
  {1200,p(0,1,1.04f,1.05f,0,0,.65f,0,0,1,1.01f,0,0,.9f)},
  {1500,p()}};
-constexpr eye_acting::Clip stepClip=eye_acting::makeClip("Step over",stepKeys);
+// Eyes on the completed numeral being stepped over (authored on the left).
+constexpr eye_acting::Clip stepClip=eye_acting::makeClip("Step over",stepKeys,eye_acting::authoredDoneLeft);
 struct StepOver {
  static constexpr uint32_t kWind=220,kPlant=700,kSettle=1020,kEnd=1500,kBodyLag=90;
  uint32_t started=0;
  bool enabled=false,initialized=false,plantPending=false,settlePending=false;
  int previousDone=0,previousActive=0,oldDone=0;
- float side=-1;     // done strip is on the left
+ float side=static_cast<float>(status_sides::kDone);  // over the done strip
  float reachValue=0;  // eased foot progress; cancellation retracts it
  uint32_t phase(uint32_t now) const { return now-started; }
  bool busy(uint32_t now) const { return enabled&&phase(now)<kEnd; }

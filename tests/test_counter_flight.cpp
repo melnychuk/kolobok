@@ -8,6 +8,9 @@
 #include "../experiments/qemu-sticks3/measured_frame_envelopes.h"
 
 using avatar_interaction::CounterFlight;
+static const int kDone=status_sides::kDone,kActive=status_sides::kActive;
+// Resting x of a counter `inset` from its status_sides screen edge.
+static float at(int side,float inset) { return status_sides::fromEdge(side,inset); }
 const count_raster::Font* fonts[]={&kBadgeFont,&kMediumBadgeFont,&kSmallBadgeFont,&kTinyBadgeFont,&kCompactBadgeFont};
 float fitted(int count) {
  char label[10];roman_counts::format(count,label);
@@ -22,41 +25,42 @@ void start(CounterFlight& flight,uint32_t at,int done=2,int active=3) {
  assert(flight.observe(at,done+1,active-1,true,true));
  assert(flight.busy(at));
 }
-void trajectory(uint32_t at,int done,int active) {
- CounterFlight flight;start(flight,at,done,active);
+void trajectory(uint32_t when,int done,int active) {
+ CounterFlight flight;start(flight,when,done,active);
  // Fit separation for BOTH old and new strings, including zero/99+.
  const float dw=fmaxf(fitted(done),fitted(done+1));
  const float aw=fmaxf(fitted(active),fitted(active-1));
  flight.fit(dw,aw);
- const float dx=fmaxf(48,dw+16)/2,ax=240-fmaxf(48,aw+16)/2;
+ const float dx=::at(kDone,fmaxf(48,dw+16)/2),ax=::at(kActive,fmaxf(48,aw+16)/2);
  float maxX=0,minY=0;
- auto previousLeft=flight.offset(at,true,dx,ax,dw,aw);
- auto previousRight=flight.offset(at,false,ax,dx,aw,dw);
+ auto previousLeft=flight.offset(when,true,dx,ax,dw,aw);
+ auto previousRight=flight.offset(when,false,ax,dx,aw,dw);
  for(uint32_t elapsed=0;elapsed<34000;elapsed+=5) {
-  const uint32_t now=at+elapsed;
+  const uint32_t now=when+elapsed;
   assert(!flight.observe(now,done+1,active-1,true,true));
-  flight.update(now,true);assert(flight.started==at);
+  flight.update(now,true);assert(flight.started==when);
   const auto left=flight.offset(now,true,dx,ax,dw,aw);
   const auto right=flight.offset(now,false,ax,dx,aw,dw);
   assert(isfinite(left.x)&&isfinite(right.y));
-  assert(left.x>=0&&right.x<=0);
+  assert(left.x*kDone<=0&&right.x*kActive<=0);  // both move inward only
   assert(left.y>=-CounterFlight::kCarry-.001f&&left.y<=2.001f);
   assert(right.y>=-CounterFlight::kCarry-.001f&&right.y<=2.001f);
-  assert(ax+right.x-aw/2-(dx+left.x+dw/2)>=9.99f);
+  const float doneEdge=dx+left.x-kDone*dw/2,activeEdge=ax+right.x-kActive*aw/2;
+  assert((activeEdge-doneEdge)*kActive>=9.99f);
   assert(fabsf(left.x-previousLeft.x)<1.3f&&fabsf(right.x-previousRight.x)<1.3f);
   assert(fabsf(left.y-previousLeft.y)<.9f&&fabsf(right.y-previousRight.y)<.9f);
   assert(left.y==right.y); // simultaneous pickup, even with unequal fitted widths
   if(!flight.busy(now))assert(left.x==0&&left.y==0&&right.x==0&&right.y==0);
-  maxX=fmaxf(maxX,left.x);minY=fminf(minY,left.y);
+  maxX=fmaxf(maxX,-kDone*left.x);minY=fminf(minY,left.y);
   previousLeft=left;previousRight=right;
  }
  assert(maxX>40&&minY<-CounterFlight::kCarry+1);
  for(uint32_t step: {16u,33u,50u,100u}) {
-  CounterFlight sampled;start(sampled,at,done,active);sampled.fit(dw,aw);
-  for(uint32_t t=0;t<CounterFlight::kSwap;t+=step)sampled.update(at+t,true);
-  const auto a=sampled.offset(at+CounterFlight::kSwap,true,dx,ax,dw,aw);
-  CounterFlight reference;start(reference,at,done,active);reference.fit(dw,aw);
-  const auto b=reference.offset(at+CounterFlight::kSwap,true,dx,ax,dw,aw);
+  CounterFlight sampled;start(sampled,when,done,active);sampled.fit(dw,aw);
+  for(uint32_t t=0;t<CounterFlight::kSwap;t+=step)sampled.update(when+t,true);
+  const auto a=sampled.offset(when+CounterFlight::kSwap,true,dx,ax,dw,aw);
+  CounterFlight reference;start(reference,when,done,active);reference.fit(dw,aw);
+  const auto b=reference.offset(when+CounterFlight::kSwap,true,dx,ax,dw,aw);
   assert(a.x==b.x&&a.y==b.y);
  }
 }
@@ -106,6 +110,7 @@ int main() {
   trajectory(100,done,active);
  trajectory(0xfffff000u,99,88);
  CounterFlight flight;start(flight,100);
+ const float doneX=at(kDone,24),activeX=at(kActive,24);
  const uint32_t swap=100+CounterFlight::kSwap,reach=100+CounterFlight::kReach;
  assert(flight.displayCount(swap-1,true,3)==2);
  assert(flight.displayCount(swap-1,false,2)==3);
@@ -113,21 +118,22 @@ int main() {
  assert(flight.displayCount(swap,false,2)==2);
  // Hands reach out first: numerals stay put until both are gripped.
  for(uint32_t t=100;t<reach;t+=10) {
-  const auto still=flight.offset(t,true,24,216,40,40);
+  const auto still=flight.offset(t,true,doneX,activeX,40,40);
   assert(still.x==0&&still.y==0);
   assert(flight.handReach(t,true)==flight.handReach(t,false));
  }
  assert(flight.handReach(reach,true)==1&&flight.handReach(reach,false)==1);
  // Swap occurs during the still apex, BEFORE either numeral returns.
- const auto before=flight.offset(swap-1,true,24,216,40,40);
- const auto swapped=flight.offset(swap,true,24,216,40,40);
- const auto after=flight.offset(swap+199,true,24,216,40,40);
+ const auto before=flight.offset(swap-1,true,doneX,activeX,40,40);
+ const auto swapped=flight.offset(swap,true,doneX,activeX,40,40);
+ const auto after=flight.offset(swap+199,true,doneX,activeX,40,40);
  assert(before.x==swapped.x&&swapped.x==after.x&&swapped.y==-CounterFlight::kCarry);
- assert(flight.offset(swap+300,true,24,216,40,40).x<swapped.x);
+ // Then the done numeral heads back out to its own side.
+ assert(flight.offset(swap+300,true,doneX,activeX,40,40).x*kDone>swapped.x*kDone);
  // Both numerals are set down before either hand lets go.
  const uint32_t release=100+CounterFlight::kRelease;
  for(bool side: {true,false}) {
-  const auto home=flight.offset(release,side,24,216,40,40);
+  const auto home=flight.offset(release,side,doneX,activeX,40,40);
   assert(home.x==0&&home.y==0);
   assert(flight.handReach(release-1,side)==1&&flight.handReach(release+CounterFlight::kRetract,side)==0);
  }
@@ -137,29 +143,32 @@ int main() {
  for(uint32_t t=0;t<CounterFlight::kEnd;t+=5)
   assert(fabsf(flight.rise(t+5)-flight.rise(t))<.5f&&flight.rise(t)<=1.5f);
  avatar_scene::Hands hands;
- flight.hands(swap,24,216,40,40,116,23,17,hands);
- assert(hands.x[0]==24+swapped.x&&hands.x[1]==216-swapped.x); // over each numeral
+ flight.hands(swap,doneX,activeX,40,40,116,23,17,hands);
+ assert(hands.x[0]==doneX+swapped.x&&hands.x[1]==activeX-swapped.x); // over each numeral
  assert(hands.y[0]==116-CounterFlight::kCarry-23/2.0f+CounterFlight::kGrip);
  assert(hands.y[1]==116-CounterFlight::kCarry-17/2.0f+CounterFlight::kGrip);
  assert(hands.halfWidth[0]==CounterFlight::kLobeMax&&CounterFlight::lobeRadius(2)==CounterFlight::kLobeMin&&
         CounterFlight::lobeRadius(20)==10+CounterFlight::kLobePad&&hands.reach[0]==1&&hands.reach[1]==1);
  // The blobs set the numerals down in their new places before letting go.
- flight.hands(release-1,24,216,40,40,116,23,23,hands);
- assert(hands.x[0]==24&&hands.x[1]==216&&hands.reach[0]==1&&hands.reach[1]==1);
+ flight.hands(release-1,doneX,activeX,40,40,116,23,23,hands);
+ assert(hands.x[0]==doneX&&hands.x[1]==activeX&&hands.reach[0]==1&&hands.reach[1]==1);
  flight.fit(50,56);
- const auto oldLabel=flight.offset(swap-1,true,24,216,20,40);
- const auto newLabel=flight.offset(swap,true,30,210,50,56);
- assert(24+oldLabel.x==30+newLabel.x); // font/strip change cannot shift the apex
+ const auto oldLabel=flight.offset(swap-1,true,doneX,activeX,20,40);
+ const auto newLabel=flight.offset(swap,true,at(kDone,30),at(kActive,30),50,56);
+ assert(doneX+oldLabel.x==at(kDone,30)+newLabel.x); // font/strip change cannot shift the apex
  const auto base=eye_acting::p(2,-1,1,.9f,.1f,.2f,.1f);
  const auto eyes=flight.apply(base,1200),body=flight.apply(base,1290,true);
  assert(fabsf(eyes.x-body.x)<.001f&&fabsf(eyes.y-body.y)<.001f);
  assert(body.closeL==0&&body.closeR==0);
  const auto strict=flight.apply(base,reach+600),warm=flight.apply(base,reach+2100);
- assert(strict.smile==0&&strict.upperL>=.22f&&strict.upperR>=.24f);
+ // Firm scrutiny of the active numeral: the eye nearer it is a touch lower-lidded.
+ const float nearLid=kActive>0?strict.upperR:strict.upperL,farLid=kActive>0?strict.upperL:strict.upperR;
+ assert(strict.smile==0&&farLid>=.22f-1e-6f&&nearLid>=.24f-1e-6f);
+ assert(strict.x*kActive>0&&warm.x*kDone>0);
  assert(warm.smile>.6f&&warm.upperL==0&&warm.upperR==0);
  flight.update(1600,false);assert(!flight.busy(1600));
  assert(flight.handReach(1600,true)==0);
- flight.hands(1600,24,216,40,40,116,23,23,hands);assert(hands.reach[0]==0&&hands.reach[1]==0);
+ flight.hands(1600,doneX,activeX,40,40,116,23,23,hands);assert(hands.reach[0]==0&&hands.reach[1]==0);
  assert(flight.displayCount(1600,true,3)==3);
  assert(!flight.observe(1800,3,2,true,true)); // no replay after preemption
  assert(!flight.busy(1800));

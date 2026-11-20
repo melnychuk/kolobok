@@ -51,8 +51,9 @@ struct HeaderAvatar {
   } else if(baseline&&!sorting&&!transferred&&!arrived&&blocked==0) {
    if(active>previousActive || done>previousDone) {
     const bool completed=done>previousDone;
-    preview.reaction.notify(completed?-1:1,completed,ms);
-    preview.surface.kick(completed?-1:1,.9f);
+    const int side=status_sides::direction(completed);  // toward the changed counter
+    preview.reaction.notify(side,completed,ms);
+    preview.surface.kick(side,.9f);
    }
   }
   previousActive=active;previousDone=done;wasHealthy=healthy;wasListening=listening;
@@ -72,7 +73,9 @@ struct HeaderAvatar {
   const bool paired=(shownDone&&shownActive)||blocked||preview.flight.busy(ms);
   auto& scene=preview.scene;
   const float region=heldActive||heldDone?240-2*strip:280;
-  const float offset=paired||listening?0:(shownDone?strip/2:shownActive?-strip/2:0);
+  // A single counter: the face fills the opposite side of the screen.
+  const float offset=paired||listening?0:
+      (shownDone?status_sides::kActive:shownActive?status_sides::kDone:0)*strip/2;
   scene.region=initialized?approach(scene.region,region,dt,.15f):region;
   scene.corners=initialized?approach(scene.corners,paired?1:0,dt,avatar_scene::kReflowSeconds):paired?1:0;
   scene.offset=initialized?approach(scene.offset,offset,dt,avatar_scene::kShiftSeconds):offset;

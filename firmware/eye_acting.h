@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <math.h>
+#include "status_sides.h"
 
 // Eye-only cartoon acting: motivated saccades, holds, anticipation and overlap.
 // Same keyframes are sampled by firmware, native tests, and visual previews.
@@ -27,7 +28,26 @@ inline Pose withBody(Pose pose,float lean,float lift) { pose.lean=lean;pose.lift
 inline Pose withEyeScale(Pose pose,float left,float right) { pose.scaleL=left-1;pose.scaleR=right-1;return pose; }
 inline Pose withLowerLids(Pose pose,float left,float right) { pose.lowerL=left;pose.lowerR=right;return pose; }
 inline Pose withSlant(Pose pose,float left,float right) { pose.slantL=left;pose.slantR=right;return pose; }
-enum ClipFlag : uint8_t { ordinary=0, celebration=1 };
+inline Pose swapEyes(Pose pose) {
+ const Pose s=pose;
+ pose.upperL=s.upperR;pose.upperR=s.upperL;pose.closeL=s.closeR;pose.closeR=s.closeL;
+ pose.scaleL=s.scaleR;pose.scaleR=s.scaleL;pose.lowerL=s.lowerR;pose.lowerR=s.lowerL;
+ pose.slantL=s.slantR;pose.slantR=s.slantL;  // the raster mirrors slant per eye
+ return pose;
+}
+// Left-right mirror image: gaze, lean and tilt flip; per-eye fields swap eyes.
+inline Pose mirrored(Pose pose) {
+ pose=swapEyes(pose);pose.x=-pose.x;pose.lean=-pose.lean;pose.tilt=-pose.tilt;
+ return pose;
+}
+// Status-directed acting authored for the original done-left layout, shown in
+// the configured one (status_sides): it keeps pointing at the same counter.
+inline Pose authored(const Pose& pose) {
+ return status_sides::kMirrorAuthored?mirrored(pose):pose;
+}
+// authoredDoneLeft: the clip glances, leans or winks toward a status counter
+// as laid out originally (done left, active right); sampling orients it.
+enum ClipFlag : uint8_t { ordinary=0, celebration=1, authoredDoneLeft=2 };
 struct Clip {
  const char* name; const Key* keys; uint8_t count,flags;
  constexpr Clip(const char* n,const Key* k,uint8_t c,uint8_t f=ordinary):name(n),keys(k),count(c),flags(f) {}
@@ -143,7 +163,8 @@ constexpr Key doubleHappy[] = {
  {990,p(0,-2,1.04f,1.03f,0,0,.65f)}, {1220,p(0,-2,1,1,0,0,.5f,1,1)},
  {1390,p(0,-1,1.04f,1.03f,0,0,.65f)}, {2250,p(0,-1,1.04f,1.03f,0,0,.65f)}, {2850,p(0,0,1,1,0,0,.45f)}};
 // Present it: anticipate away, then turn to the completed counter with a big
-// tilted smile, come back to the viewer and close happily.
+// tilted smile, come back to the viewer and close happily. Directed: authored
+// with the completed counter on the left.
 constexpr Key tada[] = {
  {0,p()}, {200,p(4,2,1.04f,.96f,0,0,.5f,0,0,1.03f,.97f,3,2,.7f)},
  {420,p(-12,-5,1.08f,1.08f,0,0,.8f,0,0,1.02f,1.06f,-6,-3,.95f,-6)},
@@ -252,7 +273,7 @@ constexpr Clip thinking[] = {
  EYE_CLIP("Work through it",untangle), EYE_CLIP("Connect the dots",connect)};
 constexpr Clip completed[] = {
  EYE_CLIP("Relief",relief), EYE_CLIP("Proud of it",proud), makeClip("Joyful bounce",bounce,celebration),
- EYE_CLIP("Warm smile",warmth), EYE_CLIP("Playful wink",wink), EYE_CLIP("Happy double blink",doubleHappy), makeClip("Ta-da",tada,celebration)};
+ EYE_CLIP("Warm smile",warmth), EYE_CLIP("Playful wink",wink), EYE_CLIP("Happy double blink",doubleHappy), makeClip("Ta-da",tada,celebration|authoredDoneLeft)};
 constexpr Clip requesting[] = {
  EYE_CLIP("Look at me",engage), EYE_CLIP("Double take",doubleTake), EYE_CLIP("Knock knock",knock),
  EYE_CLIP("Question tilt",question), EYE_CLIP("Peek and open",peek), EYE_CLIP("Check then ask",scanRequest), EYE_CLIP("Please",please)};
@@ -277,6 +298,10 @@ inline const Clip& clip(State state, int index) {
          state==State::listening ? listening : thinking)[index%clipCount(state)];
 }
 inline uint16_t duration(const Clip& c) { return c.keys[c.count-1].ms; }
+// Key pose in screen orientation (directed clips follow the status sides).
+inline Pose keyPose(const Clip& c,int index) {
+ return (c.flags&authoredDoneLeft)?authored(c.keys[index].pose):c.keys[index].pose;
+}
 inline float smooth(float t) { t=fmaxf(0,fminf(1,t)); return t*t*t*(t*(t*6-15)+10); }
 inline Pose mix(const Pose& a,const Pose& b,float t) {
  Pose result;
@@ -336,9 +361,9 @@ inline Pose mixSegment(const Pose& a,const Pose& b,float t,uint32_t length) {
 inline Pose sample(const Clip& c,uint32_t ms) {
  for(int i=1;i<c.count;++i) if(ms<c.keys[i].ms) {
   const Key& a=c.keys[i-1]; const Key& b=c.keys[i];
-  return mixSegment(a.pose,b.pose,static_cast<float>(ms-a.ms)/(b.ms-a.ms),b.ms-a.ms);
+  return mixSegment(keyPose(c,i-1),keyPose(c,i),static_cast<float>(ms-a.ms)/(b.ms-a.ms),b.ms-a.ms);
  }
- return c.keys[c.count-1].pose;
+ return keyPose(c,c.count-1);
 }
 // Every clip begins from the pose actually on screen: its authored first key is
 // replaced by `entry`, and the first segment keeps its full authored timing.
@@ -346,7 +371,7 @@ inline Pose sample(const Clip& c,uint32_t ms) {
 // neutral key and regrows at each clip boundary or interruption.
 inline Pose sampleFrom(const Clip& c,const Pose& entry,uint32_t ms) {
  if(c.count>1&&ms<c.keys[1].ms)
-  return mixSegment(entry,c.keys[1].pose,static_cast<float>(ms)/c.keys[1].ms,c.keys[1].ms);
+  return mixSegment(entry,keyPose(c,1),static_cast<float>(ms)/c.keys[1].ms,c.keys[1].ms);
  return sample(c,ms);
 }
 // Eye-visible fields only (body/flow may still move during an eye hold).
@@ -423,7 +448,7 @@ struct Player {
   if(elapsed>=duration(c)) { result.start=started+duration(c);result.still=true;return result; }
   for(int i=1;i<c.count;++i) if(elapsed<c.keys[i].ms) {
    // The first move leaves from wherever the eyes actually were.
-   const Pose& a=i==1?entryEyes:c.keys[i-1].pose; const Pose& b=c.keys[i].pose;
+   const Pose a=i==1?entryEyes:keyPose(c,i-1),b=keyPose(c,i);
    result.start=started+c.keys[i-1].ms;
    result.length=static_cast<uint16_t>(c.keys[i].ms-c.keys[i-1].ms);
    result.distance=sqrtf((b.x-a.x)*(b.x-a.x)+(b.y-a.y)*(b.y-a.y));

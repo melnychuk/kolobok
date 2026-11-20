@@ -1,6 +1,7 @@
 #pragma once
 #include "avatar_scene.h"
 #include "roman_counts.h"
+#include "status_sides.h"
 
 // Layout only: no task events, bitmap scaling, allocations or per-pixel work.
 namespace counter_space {
@@ -19,7 +20,9 @@ inline Layout target(int done,int active,float doneWidth,float activeWidth,float
  // Only side labels need accommodation. Ease it away throughout reflow;
  // bottom labels leave the avatar full-size and centred, even when unequal.
  const float side=1-corners;
- result.x=kMaxShift*(pressure(done,doneWidth)-pressure(active,activeWidth))*side;
+ // Lean away from the wider label: toward the active side when done presses.
+ result.x=kMaxShift*(pressure(done,doneWidth)-pressure(active,activeWidth))*
+          static_cast<float>(status_sides::kActive)*side;
  if(length(done)>=5||length(active)>=5)result.scale=avatar_scene::mix(1,kLongScale,side);
  return result;
 }

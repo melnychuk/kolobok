@@ -126,7 +126,7 @@ tail -n 20 ~/Library/Logs/stick-s3/bridge-error.log ~/Library/Logs/stick-s3/brid
 Then ask them to look at the Stick:
 
 1. The face is awake; with work running, blue numerals (Roman, e.g. `II`) appear
-   on the right. Finished-but-unread tasks show green on the left.
+   on the left. Finished-but-unread tasks show green on the right.
 2. A short press of the front key opens the next finished or waiting task.
 3. Linux with dictation: holding the key opens the Agents dictation popup and
    the eyes turn into a soundwave; releasing leaves editable text. Nothing is

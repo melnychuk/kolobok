@@ -56,7 +56,7 @@ Normal ESP32 O2 and native tests pass. No physical timing claim.
   release, or take an extra 2.4–4.8s quiet rest. Gentle eye asymmetry/lower lids
   ease into/out of quiet working holds. Existing no-repeat bags and authored
   timelines remain intact; urgent modes do not get longer waits.
-- Fresh eligible completions get two tiny green glints above the left numeral,
+- Fresh eligible completions get two tiny green glints above the done numeral,
   fading once over 520ms (18 pixel callbacks at most). Requests/listening/offline
   and sorting/button ownership cancel them, with no deferred replay.
 - `test_eye_shapes.cpp` checks 486 scalar/span exact-order combinations, per-eye

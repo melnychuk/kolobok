@@ -26,6 +26,8 @@ concurrency:
 
 jobs:
   deploy:
+    # The private development mirror must never publish a Pages artifact.
+    if: ${{ github.event.repository.private == false }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

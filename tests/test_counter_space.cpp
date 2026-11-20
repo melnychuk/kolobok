@@ -7,13 +7,15 @@
 #include "../experiments/avatar-widget/main.cpp"
 
 static bool near(float a,float b,float tolerance=.001f) { return fabsf(a-b)<tolerance; }
+// The face leans away from a wide label: toward the active side for done.
+static const int kActive=status_sides::kActive;
 int main() {
  assert(freopen("/dev/null","wb",stdout));
  assert(counter_space::length(0)==0&&counter_space::length(8)==4);
  assert(counter_space::length(18)==5&&counter_space::length(100)==5);
- const auto left=counter_space::target(8,0,56,0,0,true);
- const auto right=counter_space::target(0,8,0,56,0,true);
- assert(left.x==10&&right.x==-10&&left.scale==1&&right.scale==1);
+ const auto doneOnly=counter_space::target(8,0,56,0,0,true);
+ const auto activeOnly=counter_space::target(0,8,0,56,0,true);
+ assert(doneOnly.x==10*kActive&&activeOnly.x==-10*kActive&&doneOnly.scale==1&&activeOnly.scale==1);
  assert(counter_space::target(18,0,56,0,0,true).scale==.94f);
  assert(counter_space::target(18,18,56,56,1,true).x==0);
  assert(counter_space::target(18,18,56,56,1,true).scale==1);
@@ -32,16 +34,17 @@ int main() {
   float oldX=0,oldScale=1;
   for(int ms=0;ms<5000;ms+=cadence) {
    state.update(scene,18,0,56,0,cadence/1000.0f,true);
-   assert(scene.counterShift>=oldX&&scene.counterScale<=oldScale);
-   assert(scene.counterShift<=10&&scene.counterScale>=.94f);
-   if(scene.counterShift<6.5f)assert(scene.counterScale==1); // shift first
-   oldX=scene.counterShift;oldScale=scene.counterScale;
+   const float shift=scene.counterShift*kActive;
+   assert(shift>=oldX&&scene.counterScale<=oldScale);
+   assert(shift<=10&&scene.counterScale>=.94f);
+   if(shift<6.5f)assert(scene.counterScale==1); // shift first
+   oldX=shift;oldScale=scene.counterScale;
   }
-  assert(scene.counterShift==10&&scene.counterScale==.94f);
+  assert(scene.counterShift==10*kActive&&scene.counterScale==.94f);
   const auto g=avatar_scene::geometry(scene);
   auto original=scene;original.counterShift=0;original.counterScale=1;
   const auto base=avatar_scene::geometry(original);
-  assert(near(g.cx-base.cx,10)&&near(g.rx/base.rx,.94f)&&near(g.ry/base.ry,.94f));
+  assert(near(g.cx-base.cx,10*kActive)&&near(g.rx/base.rx,.94f)&&near(g.ry/base.ry,.94f));
   assert(near(avatar_scene::renderedEyeHeight(scene)/avatar_scene::renderedEyeHeight(original),.94f));
   // Request/listening/offline/sleep adapters disable the accommodation softly.
   for(int ms=0;ms<5000;ms+=cadence)state.update(scene,18,0,56,0,cadence/1000.0f,false);
@@ -49,8 +52,9 @@ int main() {
  }
  // The smaller body must still cover its unused edge in every authored
  // single-counter clip, not just the quiet poses in the contact sheet.
+ // `side` is the face's screen shift: toward the active side when only done.
  for(int side=-1;side<=1;side+=2)for(int count: {18,88}) {
-  const auto acting=side>0?eye_acting::State::done:eye_acting::State::thinking;
+  const auto acting=side==kActive?eye_acting::State::done:eye_acting::State::thinking;
   for(int clip=0;clip<eye_acting::clipCount(acting);++clip) {
    eye_acting::Player player;player.state=acting;player.index=clip;
    face_physics::Surface surface;
@@ -80,16 +84,17 @@ int main() {
  HeaderAvatar avatar;
  uint32_t now=0;
  for(int side=-1;side<=1;side+=2)for(int count: {8,18,38,88,100}) {
+  const bool doneOnly=side==kActive;
   for(int frame=0;frame<170;++frame,now+=33)
-   avatar.frame(now,side<0?count:0,0,side>0?count:0,false,true);
+   avatar.frame(now,doneOnly?0:count,0,doneOnly?count:0,false,true);
   const auto& scene=avatar.preview.scene;
   assert(side*scene.counterShift>0);
   assert(scene.counterScale==(counter_space::length(count)>=5?.94f:1.0f));
   avatar_scene::Mask mask;avatar_scene::buildMask(scene,mask);
   for(int y=0;y<135;++y)for(int dx=0;dx<16;++dx)
    assert(mask.baseCoverage(side>0?239-dx:dx,y)==1);
-  assert(avatar.preview.shownDone==(side>0?count:0));
-  assert(avatar.preview.shownActive==(side<0?count:0));
+  assert(avatar.preview.shownDone==(doneOnly?count:0));
+  assert(avatar.preview.shownActive==(doneOnly?0:count));
  }
  for(int frame=0;frame<170;++frame,now+=33)avatar.frame(now,18,0,18,false,true);
  assert(avatar.preview.scene.counterShift==0&&avatar.preview.scene.counterScale==1);

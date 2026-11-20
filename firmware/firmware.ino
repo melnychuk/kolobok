@@ -7,6 +7,7 @@
 #include "face_contour.h"
 #include "roman_counts.h"
 
+#include "status_sides.h"
 #include "avatar_scene.h"
 #include "counter_space.h"
 #include "counter_labels.h"
@@ -397,6 +398,13 @@ const count_raster::Font& fittedFont(int count) {
   return counter_labels::font(f);
 }
 
+// Resting numeral center for status slot 0 (done) / 1 (active), on the
+// screen side status_sides gives it, and the shared label baseline.
+float counterX(int slot) {
+  return counterLabels.x(slot, max(0.0f, (kScreenWidth - ui.region) / 2.0f), ui.corners);
+}
+float counterY() { return lerp(kScreenHeight / 2.0f, 116, ui.corners); }
+
 bool countCueBusy(uint32_t now) {
   return counterFlight.busy(now)||taskArrival.busy(now)||taskTransfer.busy(now)||stepOver.busy(now);
 }
@@ -482,11 +490,8 @@ void updateGaze(float seconds, uint32_t now) {
   // Current face priority can change in this frame (e.g. dictation begins).
   startle.update(now,!avatar_behavior::canStartle(face,usbPresence.unplugged,
       voiceRecording,staged,buttonCue.active));
-  const float exposed=max(0.0f,(kScreenWidth-ui.region)/2);
   const auto targets=avatar_behavior::targets(120+ui.offset+scene.counterShift,avatar_scene::eyeBaseline(ui.corners,ui.alert,0),
-      counterLabels.inset(0,exposed,ui.corners),
-      kScreenWidth-counterLabels.inset(1,exposed,ui.corners),
-      lerp(67.5f,116,ui.corners),doneCount>0,activeCount>0);
+      counterX(0),counterX(1),counterY(),doneCount>0,activeCount>0);
   actor.calm=!avatar_behavior::pending(now,celebrateUntil);
   const auto performance=director.step(face,actor,now,static_cast<uint32_t>(random(0x7fffffff)),
       counterChecks.busy(now),targets,buttonCue.active||staged||startle.active);
@@ -563,7 +568,8 @@ void updateLayout(float seconds, uint32_t now) {
   const float singleTarget = doneOnly ? ui.done.presence * (1 - ui.active.label) :
                              activeOnly ? ui.active.presence * (1 - ui.done.label) : 0;
   ui.single = approach(ui.single, singleTarget, seconds, avatar_scene::kShiftSeconds);
-  const float offsetTarget = (doneOnly ? 1 : activeOnly ? -1 : 0) *
+  // A single counter: the face fills the opposite side of the screen.
+  const float offsetTarget = (doneOnly ? status_sides::kActive : activeOnly ? status_sides::kDone : 0) *
                              sideWidth / 2 * singleTarget;
   ui.offset = approach(ui.offset, offsetTarget, seconds, avatar_scene::kShiftSeconds);
   const bool bothCounts = bridgeConnected && !voiceRecording &&
@@ -613,11 +619,11 @@ void updateLayout(float seconds, uint32_t now) {
   counterSpace.update(scene,counterFlight.displayCount(now,true,doneCount),
       counterFlight.displayCount(now,false,activeCount),counterLabels.sideWidth(0),counterLabels.sideWidth(1),
       seconds,bridgeConnected&&!voiceRecording&&face!=Face::waiting&&face!=Face::sleeping);
-  const float exposed = max(0.0f, (kScreenWidth - ui.region) / 2.0f);
-  const float doneX = counterLabels.inset(0,exposed,ui.corners);
-  const float activeX = kScreenWidth-counterLabels.inset(1,exposed,ui.corners);
+  const float doneX = counterX(0);
+  const float activeX = counterX(1);
+  const float countY = counterY();
   // Leave/re-enter and dodge translate the whole character; zero is exact.
-  taskTransfer.source(now, activeX, lerp(67.5f,116,ui.corners));
+  taskTransfer.source(now, activeX, countY);
   taskTransfer.animate(now, seconds, 120 + ui.offset + scene.counterShift, kDone);
   // Clear the falling numeral's column: the wide paired face needs far more
   // than the authored 20px, while the outer eye stays on screen.
@@ -626,21 +632,21 @@ void updateLayout(float seconds, uint32_t now) {
     const count_raster::Font& toFont = *kCountFonts[ui.active.fontIndex];
     const count_raster::Font& fromFont = &fittedFont(taskArrival.from) == &fittedFont(taskArrival.to) ?
         toFont : fittedFont(taskArrival.from);
-    dodgeRoom = task_cues::Arrival::room(scene, taskArrival.fallLeft(fromFont, toFont, activeX),
-        lerp(kScreenHeight / 2.0f, 116, ui.corners) - toFont.capHeight / 2.0f);
+    dodgeRoom = task_cues::Arrival::room(scene, taskArrival.fallInner(fromFont, toFont, activeX),
+        countY - toFont.capHeight / 2.0f);
   }
   const float arrivalDodge = taskArrival.dodge(now, dodgeRoom);
-  scene.eyeX += task_cues::Arrival::eyeReturn(arrivalDodge,
-      scene.eyeX + scene.counterShift - (scene.gap / 2 + scene.eyeWidth) * scene.counterScale);
+  scene.eyeX += task_cues::Arrival::eyeReturn(arrivalDodge, scene.eyeX + scene.counterShift,
+      (scene.gap / 2 + scene.eyeWidth) * scene.counterScale);
   scene.away = arrivalDodge + taskTransfer.awayValue;
   stepOver.animate(now, seconds);
   scene.stepSide = stepOver.side;
   scene.stepProgress = stepOver.reachValue;
   // Sorting blobs follow the same carried numeral positions drawBadge uses.
   counterFlight.hands(now, doneX, activeX, ui.done.largeWidth, ui.active.largeWidth,
-                      lerp(67.5f,116,ui.corners), kCountFonts[ui.done.fontIndex]->capHeight,
+                      countY, kCountFonts[ui.done.fontIndex]->capHeight,
                       kCountFonts[ui.active.fontIndex]->capHeight, scene.hands);
-  counterChecks.shape(scene, now, doneX, activeX, lerp(67.5f,116,ui.corners),
+  counterChecks.shape(scene, now, doneX, activeX, countY,
                       ui.done.largeWidth, ui.active.largeWidth,
                       kCountFonts[ui.done.fontIndex]->capHeight,
                       kCountFonts[ui.active.fontIndex]->capHeight,
@@ -664,43 +670,36 @@ uint16_t statusBackgroundAt(int x,int y) {
   return static_cast<uint16_t>(statusRows[y&3][x]);
 }
 
-void updateCounterContact(Badge& badge, bool leftSide, float seconds, uint32_t now) {
-  const float exposed = max(0.0f, (kScreenWidth - ui.region) / 2.0f);
-  const float inset = counterLabels.inset(leftSide?0:1,exposed,ui.corners);
-  const float cx = leftSide ? inset : kScreenWidth - inset;
-  const float cy = lerp(kScreenHeight / 2.0f, 116, ui.corners);
-  const float depth = avatar_interaction::contactDepth(faceMask, cx, cy, badge.largeWidth,
+void updateCounterContact(Badge& badge, int slot, float seconds, uint32_t now) {
+  const float side = status_sides::slotDirection(slot);
+  const float depth = avatar_interaction::contactDepth(faceMask, counterX(slot), counterY(), badge.largeWidth,
                                                        kCountFonts[badge.fontIndex]->capHeight,
-                                                       ui.corners, leftSide ? -1 : 1);
+                                                       ui.corners, side);
   // Flight is authored travel, never collision input. Rebaseline on landing.
-  badge.spring.update(seconds, depth, counterContactReady(badge) && !countCueBusy(now),
-                      leftSide ? -1 : 1);
+  badge.spring.update(seconds, depth, counterContactReady(badge) && !countCueBusy(now), side);
 }
 
-void drawBadge(Badge& badge, bool leftSide, uint32_t now) {
+void drawBadge(Badge& badge, int slot, uint32_t now) {
   if (badge.presence < 0.01f) return;
 
+  const bool done = slot == status_sides::kDoneSlot;
   const float settled = constrain((badge.presence - 0.8f) / 0.2f, 0.0f, 1.0f);
   // Requests hide the counts (visually only) behind the pulsing field.
-  const float alpha = badge.label * settled * taskTransfer.labelAlpha(now, leftSide) * (1 - ui.alert);
+  const float alpha = badge.label * settled * taskTransfer.labelAlpha(now, done) * (1 - ui.alert);
   // A dropping numeral needs only its backdrop, not the faded-in resting label.
-  const bool dropping = !leftSide && taskArrival.busy(now);
+  const bool dropping = !done && taskArrival.busy(now);
   if (alpha < 0.02f && !(dropping && settled > 0.02f)) return;
   // Position in the exposed strip, not in the colored half hidden by the face.
-  const float exposed = max(0.0f, (kScreenWidth - ui.region) / 2.0f);
-  const float inset = counterLabels.inset(leftSide?0:1,exposed,ui.corners);
-  const Badge& other = leftSide ? ui.active : ui.done;
-  const float otherInset = counterLabels.inset(leftSide?1:0,exposed,ui.corners);
-  const float restX = leftSide ? inset : kScreenWidth - inset;
-  const auto flight = counterFlight.offset(now, leftSide, restX,
-      leftSide ? kScreenWidth - otherInset : otherInset, badge.largeWidth, other.largeWidth);
+  const Badge& other = done ? ui.active : ui.done;
+  const float restX = counterX(slot);
+  const auto flight = counterFlight.offset(now, done, restX, counterX(1 - slot),
+                                           badge.largeWidth, other.largeWidth);
   const float centerX = restX + flight.x;
-  const float centerY = lerp(kScreenHeight / 2.0f, 116, ui.corners) + badge.pop.lift(now) +
-                        flight.y;
+  const float centerY = counterY() + badge.pop.lift(now) + flight.y;
   const count_raster::Font& font = *kCountFonts[badge.fontIndex];
   char label[10];
   roman_counts::format(badge.shown, label);
-  if(leftSide&&!countCueBusy(now))director.accents(now,centerX,centerY-font.capHeight/2-2,
+  if(done&&!countCueBusy(now))director.accents(now,centerX,centerY-font.capHeight/2-2,
       [&](int x,int y,float a){inkFrame(x,y,kDone,a*alpha);});  // alpha includes the request fade
   // Restore the exact status background in the outline, including its gradient.
   // It is a backdrop to SOLID black letters, not a white border or hollow font.
@@ -720,8 +719,8 @@ void drawBadge(Badge& badge, bool leftSide, uint32_t now) {
     });
     return;
   }
-  const float shakeX = leftSide ? 0 : taskTransfer.shakeX(now);
-  const float shakeY = leftSide ? 0 : taskTransfer.shakeY(now);
+  const float shakeX = done ? 0 : taskTransfer.shakeX(now);
+  const float shakeY = done ? 0 : taskTransfer.shakeY(now);
   // A stepping foot covers the numeral rather than the label floating above it.
   const bool stepped = faceMask.stepSide != 0;
   badge.raster.render(font,label,centerX,centerY,[&](int x,int y,float coverage,bool outline) {
@@ -739,9 +738,7 @@ void drawTaskCues(uint32_t now) {
     if(x>=0&&x<kScreenWidth&&y>=0&&y<kScreenHeight)inkFrame(x,y,task_cues::kFlash,a);
   };
   taskTransfer.crackles(now,light);
-  const float exposed = max(0.0f, (kScreenWidth - ui.region) / 2.0f);
-  taskTransfer.flip(now,*kCountFonts[ui.done.fontIndex],counterLabels.inset(0,exposed,ui.corners),
-      lerp(kScreenHeight / 2.0f, 116, ui.corners),
+  taskTransfer.flip(now,*kCountFonts[ui.done.fontIndex],counterX(0),counterY(),
       [&](const count_raster::Font& f,const char* text,float x,float y,float scale,float a) {
     count_raster::renderScaled(f,text,x,y,scale,[&](int px,int py,float coverage,bool outline) {
       if(px<0||px>=kScreenWidth||py<0||py>=kScreenHeight)return;
@@ -840,7 +837,7 @@ void renderFrame(uint32_t now) {
                        fabsf(ui.offset)>.95f*singleOffset;
   backgroundDeparture.update(ui.done.presence,ui.active.presence,
       counterFlight.busy(now),doneCount>0,activeCount>0,
-      reclaimed&&ui.offset<0,reclaimed&&ui.offset>0,
+      reclaimed&&ui.offset*status_sides::kDone>0,reclaimed&&ui.offset*status_sides::kActive>0,
       bridgeConnected&&!voiceRecording&&attentionCount==0,seconds);
   drawIndicators(now);
   // The request `!` sits in the pulsing field; the rising head may cover it.
@@ -851,8 +848,8 @@ void renderFrame(uint32_t now) {
   }
   STICK_PROFILE_MARK(background);
   avatar_scene::buildMask(scene,faceMask);
-  updateCounterContact(ui.done, true, seconds, now);
-  updateCounterContact(ui.active, false, seconds, now);
+  updateCounterContact(ui.done, status_sides::kDoneSlot, seconds, now);
+  updateCounterContact(ui.active, status_sides::kActiveSlot, seconds, now);
   STICK_PROFILE_MARK(mask);
   drawFaceBackground();
   STICK_PROFILE_MARK(face);
@@ -874,8 +871,8 @@ void renderFrame(uint32_t now) {
   });
   STICK_PROFILE_MARK(mouth);
   STICK_PROFILE_MARK(attention);
-  drawBadge(ui.done,true,now);
-  drawBadge(ui.active,false,now);
+  drawBadge(ui.done,status_sides::kDoneSlot,now);
+  drawBadge(ui.active,status_sides::kActiveSlot,now);
   drawTaskCues(now);
   STICK_PROFILE_MARK(badges);
   presentFrame();
@@ -945,16 +942,17 @@ void applyCounts(int nextActiveCount, int nextAttentionCount, int nextDoneCount,
     stepOver.observe(now,nextDoneCount,nextActiveCount,true,false);
   }
   if(bridgeConnected && !sorting && !transferred && !arrived && !voiceRecording && nextAttentionCount==0) {
+    // React toward the counter that changed.
     if(nextDoneCount>doneCount) {
-      surface.kick(-1,.95f);
-      countReaction.notify(-1,true,now);
+      surface.kick(status_sides::kDone,.95f);
+      countReaction.notify(status_sides::kDone,true,now);
     } else if(nextActiveCount>0 && nextActiveCount!=activeCount) {
       const bool arrival=nextActiveCount>activeCount;
-      surface.kick(1,arrival?.90f:.35f);
-      countReaction.notify(1,false,now,arrival);
+      surface.kick(status_sides::kActive,arrival?.90f:.35f);
+      countReaction.notify(status_sides::kActive,false,now,arrival);
     } else if(activeCount>0 && nextActiveCount==0 && nextDoneCount>0) {
-      surface.kick(-1,.65f);
-      countReaction.notify(-1,true,now);
+      surface.kick(status_sides::kDone,.65f);
+      countReaction.notify(status_sides::kDone,true,now);
     }
   }
   if (bridgeConnected && !voiceRecording && nextAttentionCount==0 && nextDoneCount > doneCount) {

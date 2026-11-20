@@ -5,8 +5,8 @@ your GitHub Copilot CLI and Herdr agents are working, need you, or are done.
 Live demo with the real firmware renderer compiled to WebAssembly:
 <https://melnychuk.github.io/stick-s3/>.
 
-- **Blue, right:** active tasks, as Roman numerals. A new one drops in from the top.
-- **Green, left:** unread completions. A finished task charges, bursts and flips across.
+- **Blue, left:** active tasks, as Roman numerals. A new one drops in from the top.
+- **Green, right:** unread completions. A finished task charges, bursts and flips across.
 - **Orange-yellow glow:** an agent needs you. The avatar peeks up from below a
   bobbing `!`, hops a little, and plays one polite C6→G6 chime.
 - **Front key:** short press opens the next unread or waiting task; hold to dictate

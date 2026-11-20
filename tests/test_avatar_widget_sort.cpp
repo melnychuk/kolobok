@@ -52,12 +52,15 @@ int main() {
   last.frame(ms,0,0,2,false,true);
   auto& preview=last.preview;
   const float singleOffset=stripWidth(preview.shownDone)/2.0f;
-  covered=covered||(preview.scene.corners<.05f&&preview.scene.offset>.95f*singleOffset);
+  // Done only: the face slides over the (now empty) active side.
+  covered=covered||(preview.scene.corners<.05f&&
+                    preview.scene.offset*status_sides::kActive>.95f*singleOffset);
   if(ms>=pickup+avatar_interaction::CounterFlight::kSwap)assert(preview.shownActive==0);
   if(!covered)assert(preview.backgroundDeparture.presence[1]==1);
   else {
    avatar_scene::Mask mask;avatar_scene::buildMask(preview.scene,mask);
-   for(int y=0;y<135;++y)assert(mask.baseCoverage(239,y)==1);
+   const int activeEdge=status_sides::kActive>0?239:0;
+   for(int y=0;y<135;++y)assert(mask.baseCoverage(activeEdge,y)==1);
   }
   if(preview.backgroundDeparture.presence[1]<.01f) {
    assert(covered);released=true;

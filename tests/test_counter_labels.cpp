@@ -9,9 +9,9 @@ static void rasterBounds(const counter_labels::State& plan,float exposed,float c
  for(int side=0;side<2;++side) {
   if(plan.counts[side]<=0)continue;
   const auto& text=plan.labels[side];char roman[10];roman_counts::format(plan.counts[side],roman);
-  const float inset=plan.inset(side,exposed,corners);
+  const float x=plan.x(side,exposed,corners);
   for(float shift: {-3.0f,0.0f,3.0f})
-   count_raster::render(counter_labels::font(text.index),roman,(side?240-inset:inset)+shift,116,
+   count_raster::render(counter_labels::font(text.index),roman,x+shift,116,
        [](int x,int y,float,bool){assert(x>=0&&x<240&&y>=0&&y<135);});
  }
 }
@@ -64,7 +64,7 @@ int main() {
    const auto& frame=elapsed<swap?old:newer;
    float centers[2]={};
    for(int side=0;side<2;++side) {
-    const float inset=frame.inset(side,72,1),rest=side?240-inset:inset;
+    const float rest=frame.x(side,72,1);
     const auto offset=flight.offset(100+elapsed,side==0,rest,240-rest,
                                   frame.labels[side].width,frame.labels[1-side].width);
     centers[side]=rest+offset.x;
@@ -73,7 +73,10 @@ int main() {
     if(elapsed==swap-10)before[side]=centers[side];
     if(elapsed==swap)after[side]=centers[side];
    }
-   assert(centers[1]-frame.labels[1].width/2-(centers[0]+frame.labels[0].width/2)>=9.99f);
+   // Inner edges keep ten pixels apart, whichever side each status is on.
+   const float doneInner=centers[0]-status_sides::kDone*frame.labels[0].width/2;
+   const float activeInner=centers[1]-status_sides::kActive*frame.labels[1].width/2;
+   assert((activeInner-doneInner)*status_sides::kActive>=9.99f);
   }
   assert(fabsf(before[0]-after[0])<.001f&&fabsf(before[1]-after[1])<.001f);
  }

@@ -1,9 +1,11 @@
 #pragma once
 #include <math.h>
 #include <stdint.h>
+#include "status_sides.h"
 
 // Shared by firmware and native previews. The two count colors blend spatially
-// and fade into/out of that blend with the count-presence animations.
+// and fade into/out of that blend with the count-presence animations. Each
+// status color sits on its status_sides screen side.
 namespace status_background {
 inline float clamp(float value) { return value<0?0:(value<1?value:1); }
 inline float weight(int x) {
@@ -36,8 +38,10 @@ inline uint16_t color(int x,int y,uint16_t done,uint16_t active,
  int result[3]={};
  for(int c=0;c<3;++c) {
   const float background=channel(portrait,shifts[c],masks[c])*portraitPresence;
-  const float left=donePresence>=.01f?channel(done,shifts[c],masks[c])*donePresence:background;
-  const float right=activePresence>=.01f?channel(active,shifts[c],masks[c])*activePresence:background;
+  const float completed=donePresence>=.01f?channel(done,shifts[c],masks[c])*donePresence:background;
+  const float working=activePresence>=.01f?channel(active,shifts[c],masks[c])*activePresence:background;
+  const float left=status_sides::kDone<0?completed:working;
+  const float right=status_sides::kDone<0?working:completed;
   const float split=x<120?left:right;
   const float gradient=left+(right-left)*spatial;
   const float value=split+(gradient-split)*paired;
@@ -70,6 +74,8 @@ struct State {
  }
 };
 // A sorting numeral may become zero at the apex, before the wide face reflows.
+// Slots are status slots (0 done, 1 active); `reclaimed*` says the face has
+// shifted into that status's side.
 // Retain its backdrop independently of digit visibility until the face has
 // shifted into the vacated side, then ease it away behind the settled face.
 // Do not wait for full-screen mask coverage: the organic rim can leave corners

@@ -1,5 +1,15 @@
 # Avatar acting and fluid-field design
 
+**Status sides:** active work (blue) is on the LEFT and
+unread completions (green) on the RIGHT. With only active tasks the face shifts
+right; with only completions it shifts left; paired counters sit bottom-left
+(active) and bottom-right (done) under a centred face. `firmware/status_sides.h`
+is the single mapping for firmware, header widget, previews and tests; status-
+directed authored clips keep their original keys and are mirrored on sampling
+(`authoredDoneLeft`), never the framebuffer, so Roman numerals stay readable.
+`-DSTICK_S3_DONE_SIDE=-1` rebuilds the original done-left layout for regression
+comparison. Requests temporarily cover the counters with their warm field.
+
 Width-aware [numeral accommodation](avatar-counter-space.md) shifts first and
 eases body/eyes to 94% for five-character SIDE labels only. Bottom numerals grow
 inward at normal font size, reducing only for real collisions; the avatar stays
@@ -302,7 +312,7 @@ lean in left/right, a small acknowledgement nod, taking it in, reassuring blink,
 and patient listening. They use receptive open-eye holds, restrained turns, short
 closures and a separate no-repeat bag. They are clock-authored, not lip sync.
 Since 2026-11-19 the eyes themselves become a soundwave while listening (see
-"Listening soundwave" below). A short press gets a happy leftward wink; release after a
+"Listening soundwave" below). A short press gets a happy wink toward the done side; release after a
 recording gets a small nod. Those acknowledge gestures, not successful desktop
 focus/transcription. The 300ms hold threshold and local-only ASR remain unchanged.
 Recording hides counters visually without changing the counts/unread set, recenters
@@ -459,7 +469,7 @@ active decrease, while both old counters are readable. Both OLD numerals lift
 simultaneously and gather without crossing status sides. A still apex hold runs
 1050–1600ms; both labels change to the exact NEW snapshot at 1400ms, **before**
 return travel begins. Thus II done + III active becomes III done + II active
-while gathered, then returns to green-left/blue-right. Batched completions use
+while gathered, then returns to green-right/blue-left. Batched completions use
 actual totals rather than an invented one-task transfer. Zero remains hidden.
 The full beat is 2.95s, retaining 32px lift, fitted separation, strict active /
 warm done eyes and 90ms body overlap. No idle recurrence or alternating lead.

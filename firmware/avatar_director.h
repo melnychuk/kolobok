@@ -5,14 +5,19 @@
 // never wait for it. No queues: a new mode redirects from the displayed pose.
 namespace avatar_behavior {
 inline float bounded(float v,float lo,float hi) { return v<lo?lo:v>hi?hi:v; }
+// A glance toward a counter on screen side `sign`, never past the center.
+inline float toward(float sign,float v,float limit) {
+ return sign<0?bounded(v,-limit,0):bounded(v,0,limit);
+}
+// Gaze offsets toward each counter's screen position (see status_sides).
 struct Targets {
- float doneX=-12,doneY=0,activeX=12,activeY=0;
+ float doneX=12.0f*status_sides::kDone,doneY=0,activeX=12.0f*status_sides::kActive,activeY=0;
 };
 inline Targets targets(float faceX,float faceY,float doneX,float activeX,float countY,
                        bool done,bool active) {
  Targets t;
- t.doneX=done?bounded((doneX-faceX)*.15f,-14,0):0;
- t.activeX=active?bounded((activeX-faceX)*.15f,0,14):0;
+ t.doneX=done?toward(status_sides::kDone,(doneX-faceX)*.15f,14):0;
+ t.activeX=active?toward(status_sides::kActive,(activeX-faceX)*.15f,14):0;
  t.doneY=done?bounded((countY-faceY)*.18f,-10,10):0;
  t.activeY=active?bounded((countY-faceY)*.18f,-10,10):0;
  return t;
@@ -82,6 +87,8 @@ struct Director {
     respond=eye_acting::withLids(eye_acting::withGaze(respond,t.activeX,t.activeY),.12f,.18f);
     respond.lean=t.activeX*.22f;respond.flow=.5f;
     respond.lowerL=.10f;respond.lowerR=.07f;respond.slantL=.04f;respond.slantR=.02f;
+    // Per-eye lids were authored with active work on the right.
+    if(status_sides::kMirrorAuthored)respond=eye_acting::swapEyes(respond);
   } else if(beat==Beat::complete) {
     a=180;b=470;length=940;
     notice=eye_acting::withGaze(notice,t.doneX*.35f,t.doneY*.35f);notice.height=1.06f;
@@ -118,6 +125,7 @@ struct Director {
     if(next==Mode::working) {
      respond=eye_acting::withGaze(respond,t.activeX*.6f,t.activeY*.6f);
      respond.upperL=.10f;respond.upperR=.16f;
+     if(status_sides::kMirrorAuthored)respond=eye_acting::swapEyes(respond);
     }
   }
   keys[0]={0,visibleEyes};keys[1]={a,notice};keys[2]={b,respond};keys[3]={length,settle};

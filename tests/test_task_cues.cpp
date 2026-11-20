@@ -10,9 +10,16 @@
 
 using task_cues::Arrival;
 using task_cues::Transfer;
+// Layout from status_sides: resting label centers 24px in from each status's
+// edge; the arrival dodges kAway (away from active); the transfer exits and
+// re-enters through the active side.
+static const float kAway=Arrival::kAway;
+static const float kExit=static_cast<float>(status_sides::kActive);
+static const float kDoneX=status_sides::fromEdge(status_sides::kDone,24);
+static const float kActiveX=status_sides::fromEdge(status_sides::kActive,24);
 
 struct Drawn { std::string text; float x,y; bool flying; };
-static std::vector<Drawn> drawArrival(const Arrival& a,uint32_t now,float restX=216,float restY=67.5f) {
+static std::vector<Drawn> drawArrival(const Arrival& a,uint32_t now,float restX=kActiveX,float restY=67.5f) {
  std::vector<Drawn> out;
  a.draw(now,fontFor(a.from),fontFor(a.to),restX,restY,
         [&](const count_raster::Font&,const char* text,float x,float y,bool flying) {
@@ -51,8 +58,8 @@ static void arrivalEdges() {
   c.update(t,true);
   if(c.consumeImpact(t))++impacts;
   const float dodge=c.dodge(t);
-  assert(dodge<=0&&dodge>=-20.001f&&fabsf(dodge-previous)<14);
-  minDodge=fminf(minDodge,dodge);previous=dodge;
+  assert(dodge*kAway>=0&&fabsf(dodge)<=20.001f&&fabsf(dodge-previous)<14);
+  minDodge=fminf(minDodge,-fabsf(dodge));previous=dodge;
  }
  assert(impacts==1&&minDodge<-19&&c.dodge(1000+Arrival::kEnd+500)==0);
  // No pose change outside the cue; eye and body overlap is 90ms.
@@ -77,7 +84,7 @@ static void arrivalRoman() {
   const float total=count_raster::width(fontFor(from+1),after);
   const float kept=count_raster::width(fontFor(from),before);
   if(sameFont) {
-   assert(fabsf(landed[0].x-(216-total/2+kept/2))<.01f&&fabsf(landed[0].y-67.5f)<.01f);
+   assert(fabsf(landed[0].x-(kActiveX-total/2+kept/2))<.01f&&fabsf(landed[0].y-67.5f)<.01f);
    assert(fabsf(landed[1].y-67.5f)<.01f);
   }
  }
@@ -87,7 +94,7 @@ static void arrivalRoman() {
   char after[10];roman_counts::format(from+1,after);
   const auto hanging=drawArrival(a,100+500);
   assert(hanging.size()==2&&hanging[1].text==after&&hanging[1].y<20);
-  assert(fabsf(hanging[0].x-216)<.01f&&fabsf(hanging[0].y-67.5f)<.01f);
+  assert(fabsf(hanging[0].x-kActiveX)<.01f&&fabsf(hanging[0].y-67.5f)<.01f);
   const auto knocked=drawArrival(a,100+Arrival::kImpact+180);
   assert(knocked.size()==2&&knocked[0].y>80);
   const auto gone=drawArrival(a,100+Arrival::kImpact+800);
@@ -146,11 +153,13 @@ static void transferMotion() {
  for(float corners: {0.0f,.5f,1.0f})for(float offset: {-36.0f,0.0f,36.0f}) {
   avatar_scene::Scene scene;scene.corners=corners;scene.offset=offset*(1-corners);
   scene.region=corners?144:168;scene.side=1;scene.eyeX=120+scene.offset;
-  scene.away=Transfer::kHidden;
-  assert(coveredPixels(scene)==0);
-  int eyes=0;avatar_scene::Mask mask;avatar_scene::buildMask(scene,mask);
-  avatar_scene::eyes(scene,mask,[&](int,int,float){++eyes;});
-  assert(eyes==0);
+  for(float exit: {-1.0f,1.0f}) {
+   scene.away=exit*Transfer::kHidden;
+   assert(coveredPixels(scene)==0);
+   int eyes=0;avatar_scene::Mask mask;avatar_scene::buildMask(scene,mask);
+   avatar_scene::eyes(scene,mask,[&](int,int,float){++eyes;});
+   assert(eyes==0);
+  }
  }
  for(int cadence: {16,33,50}) {
   Transfer t;t.observe(0,0,1,true,true);assert(t.observe(1000,1,0,true,true));
@@ -159,10 +168,11 @@ static void transferMotion() {
    const uint32_t now=1000+ms;
    t.update(now,true);t.animate(now,cadence/1000.0f,148,0x2e2b);
    if(t.consumeHome(now))++homes;
-   const float away=t.awayValue;
-   assert(isfinite(away)&&away>=0&&away<=Transfer::kHidden);
+   assert(isfinite(t.awayValue)&&t.awayValue*kExit>=0);
+   const float away=fabsf(t.awayValue);  // distance out through the active side
+   assert(away<=Transfer::kHidden);
    if(ms<Transfer::kCover)assert(away==0);
-   if(ms>=Transfer::kCover&&ms<Transfer::kEnter)assert(away==Transfer::kHidden);
+   if(ms>=Transfer::kCover&&ms<Transfer::kEnter)assert(t.awayValue==kExit*Transfer::kHidden);
    // Careful entry: once visible, it only ever moves inward, never jumps.
    if(ms>=Transfer::kEnter+cadence) { assert(away<=previous+.001f);entered=true; }
    if(ms>=Transfer::kHome)assert(away==0);
@@ -175,25 +185,25 @@ static void transferMotion() {
  Transfer c;c.observe(0,0,1,true,true);c.observe(1000,1,0,true,true);
  for(uint32_t now=1000;now<1000+Transfer::kCover+200;now+=33)c.animate(now,.033f,148,0);
  c.update(1000+Transfer::kCover+233,false);
- float away=c.awayValue;
+ float away=fabsf(c.awayValue);
  for(uint32_t now=1000+Transfer::kCover+233;now<1000+Transfer::kCover+3200;now+=33) {
-  c.animate(now,.033f,148,0);assert(c.awayValue<=away);away=c.awayValue;
+  c.animate(now,.033f,148,0);assert(fabsf(c.awayValue)<=away);away=fabsf(c.awayValue);
  }
  assert(away==0&&c.washValue==0);
  // The flipping numeral turns over once (edge-on, mirrored) and lands exactly.
- Transfer f;f.observe(0,0,1,true,true);f.observe(1000,1,0,true,true);f.source(1000,216,67.5f);
+ Transfer f;f.observe(0,0,1,true,true);f.observe(1000,1,0,true,true);f.source(1000,kActiveX,67.5f);
  float minScale=1,maxScale=-1;Drawn landed{"",0,0,false};
  for(uint32_t ms=Transfer::kReveal;ms<Transfer::kLand+300;ms+=5) {
-  f.flip(1000+ms,fontFor(1),24,67.5f,[&](const count_raster::Font&,const char* text,float x,float y,
+  f.flip(1000+ms,fontFor(1),kDoneX,67.5f,[&](const count_raster::Font&,const char* text,float x,float y,
                                           float scale,float alpha) {
    assert(!strcmp(text,"I")&&alpha>=0&&alpha<=1&&y>0&&x>0&&x<240);
    minScale=fminf(minScale,scale);maxScale=fmaxf(maxScale,scale);
    landed={text,x,y,false};
   },[&](int,int,float){});
  }
- assert(minScale<-.99f&&maxScale>.99f&&fabsf(landed.x-24)<.01f&&fabsf(landed.y-67.5f)<.6f);
+ assert(minScale<-.99f&&maxScale>.99f&&fabsf(landed.x-kDoneX)<.01f&&fabsf(landed.y-67.5f)<.6f);
  // The final starburst frame covers essentially the whole screen.
- Transfer b;b.observe(0,0,1,true,true);b.observe(1000,1,0,true,true);b.source(1000,210,67.5f);
+ Transfer b;b.observe(0,0,1,true,true);b.observe(1000,1,0,true,true);b.source(1000,status_sides::fromEdge(status_sides::kActive,30),67.5f);
  static float cover[135][240];
  memset(cover,0,sizeof(cover));
  b.burst(1000+Transfer::kCover-1,[&](int x,int y,int n) {
@@ -316,9 +326,9 @@ static void splitCompletions() {
 static void pairedArrivalRoom() {
  // Single-counter layouts keep the authored 20px jerk exactly.
  {
-  Preview p(0,2,21);float minAway=0;
-  for(uint32_t ms=0;ms<=4000;ms+=33){p.step(ms);minAway=fminf(minAway,p.scene.away);}
-  assert(minAway>=-20.001f&&minAway<-19);
+  Preview p(0,2,21);float maxAway=0;
+  for(uint32_t ms=0;ms<=4000;ms+=33){p.step(ms);maxAway=fmaxf(maxAway,kAway*p.scene.away);}
+  assert(maxAway<=20.001f&&maxAway>19);
  }
  // With both counters the wide face backs away from the corner while the
  // numeral teeters and stays clear of its column through the fall; the outer
@@ -328,16 +338,18 @@ static void pairedArrivalRoom() {
   int clearFrames=0,checked=0;
   for(uint32_t ms=0;ms<=5200;ms+=cadence) {
    p.step(ms);
-   const float away=p.scene.away;
+   const float away=-kAway*p.scene.away;  // the original sign: negative is a dodge
    assert(isfinite(away)&&away<=0&&away>=-task_cues::Arrival::kMaxDodge-.001f);
    if(ms>static_cast<uint32_t>(cadence))assert(fabsf(away-previous)<14.0f*cadence/33+1);  // authored jerk only
    previous=away;minAway=fminf(minAway,away);
    if(p.arrival.busy(ms)) {
-    minEye=fminf(minEye,p.scene.eyeX+p.scene.away-p.scene.gap/2-p.scene.eyeWidth);
+    // Outer edge of the eye on the dodge side, measured from that screen edge.
+    const float outer=p.scene.eyeX+p.scene.away+kAway*(p.scene.gap/2+p.scene.eyeWidth);
+    minEye=fminf(minEye,kAway<0?outer:240-outer);
     const uint32_t t=p.arrival.phase(ms);
     if(t>=task_cues::Arrival::kHang+150&&t<task_cues::Arrival::kImpact) {
      const auto& font=counter_labels::font(p.counterLabels.labels[1].index);
-     const float restX=240-p.counterLabels.inset(1,(240-p.scene.region)/2,p.scene.corners);
+     const float restX=p.counterX(1);
      const auto& fromFont=&fontFor(p.arrival.from)==&fontFor(p.arrival.to)?font:fontFor(p.arrival.from);
      const float restY=avatar_scene::mix(67.5f,116,p.scene.corners);
      // The falling piece itself (with its 2px outline) must not land on the face.

@@ -112,6 +112,10 @@ struct Preview {
  float seconds=0;
  bool eventFired=false;
  uint32_t previous=0;
+ // Resting numeral center for status slot 0 (done) / 1 (active) on its
+ // status_sides screen side, and the shared label baseline.
+ float counterX(int slot) const { return counterLabels.x(slot,(240-scene.region)/2,scene.corners); }
+ float counterY() const { return avatar_scene::mix(67.5f,116,scene.corners); }
  Preview(int s,int i,int layout):state(static_cast<eye_acting::State>(s)),index(i),mode(layout) {
   player.state=state;player.index=index;player.started=0;
   if(mode==1||mode==10||mode==14)active=0;
@@ -150,7 +154,8 @@ struct Preview {
   scene.region=s==3||(!done&&!active)?280:240-2*side;
   if(!done&&!active)scene.side=0;
   scene.corners=(done&&active)||s==2?1:0;
-  scene.offset=scene.corners||s==3?0:(done?side/2:-side/2);
+  // A single counter: the face fills the opposite side of the screen.
+  scene.offset=scene.corners||s==3?0:(done?status_sides::kActive:status_sides::kDone)*side/2;
   scene.alert=s==2?1:0;
   scene.awakeHeight=s==2?44:56;
   scene.eyeHeight=scene.awakeHeight;
@@ -163,12 +168,14 @@ struct Preview {
   }
   if(mode>=4 && mode<=6 && !eventFired && ms>=600) {
    eventFired=true;
-   if(mode==4||mode==6) { active=mode==6?4:3;surface.kick(1,.90f);reaction.notify(1,false,ms); }
+   if(mode==4||mode==6) {
+    active=mode==6?4:3;surface.kick(status_sides::kActive,.90f);reaction.notify(status_sides::kActive,false,ms);
+   }
    else {
     done=2;active=2;
     player.entryEyes=scene.eyes;player.entryBody=scene.body;
     state=eye_acting::State::done;player.state=state;player.index=index;player.started=ms;
-    surface.kick(-1,.95f);reaction.notify(-1,true,ms);
+    surface.kick(status_sides::kDone,.95f);reaction.notify(status_sides::kDone,true,ms);
    }
   }
   if(mode>=16&&mode<=18&&!eventFired&&ms>=600) {
@@ -220,7 +227,8 @@ struct Preview {
    scene.region=approach(scene.region,done||active?240-2*side:280,dt,.16f);
    scene.side=approach(scene.side,done||active?1:0,dt,.16f);
    scene.corners=approach(scene.corners,paired?1:0,dt,avatar_scene::kReflowSeconds);
-   scene.offset=approach(scene.offset,paired?0:(done?side/2:active?-side/2:0),dt,avatar_scene::kShiftSeconds);
+   scene.offset=approach(scene.offset,paired?0:(done?status_sides::kActive:active?status_sides::kDone:0)*side/2,
+                         dt,avatar_scene::kShiftSeconds);
   }
   const bool sorting=flight.busy(ms),beforeSwap=sorting&&!flight.swapped(ms);
   counterLabels.update(done,active,scene.corners,
@@ -239,11 +247,8 @@ struct Preview {
   startle.update(ms,state==eye_acting::State::listening||button.active);
   avatar_behavior::Performance performance={player.eyes(ms),player.body(ms),false};
   if(mode==19) {
-   const float exposed=(240-scene.region)/2;
    const auto targets=avatar_behavior::targets(120+scene.offset+scene.counterShift,avatar_scene::eyeBaseline(scene.corners,scene.alert,0),
-       counterLabels.inset(0,exposed,scene.corners),
-       240-counterLabels.inset(1,exposed,scene.corners),
-       avatar_scene::mix(67.5f,116,scene.corners),done>0,active>0);
+       counterX(0),counterX(1),counterY(),done>0,active>0);
    performance=director.step(liveMode,player,ms,ms*1664525u+1013904223u,checks.busy(ms),targets,
                              staged||button.active);
    if(performance.transitioning||staged||button.active)reaction.active=false;
@@ -260,8 +265,9 @@ struct Preview {
   scene.eyes=arrival.apply(scene.eyes,ms);
   {
    const float lookY=avatar_scene::mix(2,9,scene.corners);
-   scene.body=transfer.apply(scene.body,ms,true,-14,lookY);
-   scene.eyes=transfer.apply(scene.eyes,ms,false,-14,lookY);
+   const float lookX=14.0f*status_sides::kDone;
+   scene.body=transfer.apply(scene.body,ms,true,lookX,lookY);
+   scene.eyes=transfer.apply(scene.eyes,ms,false,lookX,lookY);
   }
   scene.body=stepOver.apply(scene.body,ms,true);
   scene.eyes=stepOver.apply(scene.eyes,ms);
@@ -303,18 +309,16 @@ struct Preview {
    // Same fall column as the drawn drop: clear it, not just a fixed 20px.
    const auto& toFont=counter_labels::font(counterLabels.labels[1].index);
    const auto& fromFont=&fontFor(arrival.from)==&fontFor(arrival.to)?toFont:fontFor(arrival.from);
-   const float restX=240-counterLabels.inset(1,(240-scene.region)/2,scene.corners);
-   const float restY=avatar_scene::mix(67.5f,116,scene.corners);
-   dodgeRoom=task_cues::Arrival::room(scene,arrival.fallLeft(fromFont,toFont,restX),
-                                      restY-toFont.capHeight/2.0f);
+   dodgeRoom=task_cues::Arrival::room(scene,arrival.fallInner(fromFont,toFont,counterX(1)),
+                                      counterY()-toFont.capHeight/2.0f);
   }
   const float arrivalDodge=arrival.dodge(ms,dodgeRoom);
   scene.away=arrivalDodge+transfer.awayValue;
   stepOver.animate(ms,dt);
   scene.stepSide=stepOver.side;scene.stepProgress=stepOver.reachValue;
   scene.eyeX=120+scene.offset+scene.eyes.x+surface.x*.45f;
-  scene.eyeX+=task_cues::Arrival::eyeReturn(arrivalDodge,
-      scene.eyeX+scene.counterShift-(scene.gap/2+scene.eyeWidth)*scene.counterScale);
+  scene.eyeX+=task_cues::Arrival::eyeReturn(arrivalDodge,scene.eyeX+scene.counterShift,
+      (scene.gap/2+scene.eyeWidth)*scene.counterScale);
   scene.eyeY=avatar_scene::eyeBaseline(scene.corners,scene.alert,0)+scene.eyes.y+surface.y*.55f;
   scene.hop=hops.height(ms)*scene.alert;scene.hopStretch=hops.stretch(ms)*scene.alert;
   {
@@ -326,34 +330,33 @@ struct Preview {
   }
   scene.flowClock=fluid_face::advance(scene.flowClock,dt*(state==eye_acting::State::attention?.95f:state==eye_acting::State::done?.55f:.60f)*scene.body.flow);
   avatar_scene::Mask mask;
-  const float exposed=(240-scene.region)/2;
-  const float insetL=counterLabels.inset(0,exposed,scene.corners);
-  const float insetR=counterLabels.inset(1,exposed,scene.corners);
-  const float cy=avatar_scene::mix(67.5f,116,scene.corners);
+  const float doneX=counterX(0),activeX=counterX(1),cy=counterY();
   const float doneWidth=counterLabels.labels[0].width,activeWidth=counterLabels.labels[1].width;
   const auto& doneFont=counter_labels::font(counterLabels.labels[0].index);
   const auto& activeFont=counter_labels::font(counterLabels.labels[1].index);
   counterSpace.update(scene,done,active,counterLabels.sideWidth(0),counterLabels.sideWidth(1),dt,healthy&&
       state!=eye_acting::State::attention&&state!=eye_acting::State::listening&&
       (mode!=19||liveMode!=avatar_behavior::Mode::sleeping));
-  transfer.source(ms,240-insetR,cy);
-  flight.hands(ms,insetL,240-insetR,doneWidth,activeWidth,cy,doneFont.capHeight,
+  transfer.source(ms,activeX,cy);
+  flight.hands(ms,doneX,activeX,doneWidth,activeWidth,cy,doneFont.capHeight,
                activeFont.capHeight,scene.hands);
-  checks.shape(scene,ms,insetL,240-insetR,cy,doneWidth,activeWidth,
+  checks.shape(scene,ms,doneX,activeX,cy,doneWidth,activeWidth,
                doneFont.capHeight,activeFont.capHeight);
   avatar_scene::buildMask(scene,mask);
   const float singleOffset=fmaxf(done?stripWidth(done):0,active?stripWidth(active):0)/2;
   const bool reclaimed=scene.corners<.05f && fabsf(scene.offset)>.95f*singleOffset;
   backgroundDeparture.update(done?1.0f:0.0f,active?1.0f:0.0f,
       flight.busy(ms),this->done>0,this->active>0,
-      reclaimed&&scene.offset<0,reclaimed&&scene.offset>0,
+      reclaimed&&scene.offset*status_sides::kDone>0,reclaimed&&scene.offset*status_sides::kActive>0,
       healthy&&state!=eye_acting::State::attention&&state!=eye_acting::State::listening,dt);
-  doneSpring.update(seconds,avatar_interaction::contactDepth(mask,insetL,cy,
-      doneWidth,doneFont.capHeight,scene.corners,-1),
-      done>0&&!staged&&state!=eye_acting::State::attention&&state!=eye_acting::State::listening,-1);
-  activeSpring.update(seconds,avatar_interaction::contactDepth(mask,240-insetR,cy,
-      activeWidth,activeFont.capHeight,scene.corners,1),
-      active>0&&!staged&&state!=eye_acting::State::attention&&state!=eye_acting::State::listening,1);
+  doneSpring.update(seconds,avatar_interaction::contactDepth(mask,doneX,cy,
+      doneWidth,doneFont.capHeight,scene.corners,status_sides::kDone),
+      done>0&&!staged&&state!=eye_acting::State::attention&&state!=eye_acting::State::listening,
+      status_sides::kDone);
+  activeSpring.update(seconds,avatar_interaction::contactDepth(mask,activeX,cy,
+      activeWidth,activeFont.capHeight,scene.corners,status_sides::kActive),
+      active>0&&!staged&&state!=eye_acting::State::attention&&state!=eye_acting::State::listening,
+      status_sides::kActive);
  }
  void render(bool ppm,uint32_t darkRgb=0) {
   const uint16_t dark=rgb((darkRgb>>16)&255,(darkRgb>>8)&255,darkRgb&255);
@@ -376,10 +379,7 @@ struct Preview {
   for(int y=0;y<H;++y)for(int x=0;x<W;++x)canvas.pixels[y*W+x]=background(x,y);
   // The `!` sits in the request field; the rising head may pass in front.
   if(scene.alert>0)request_scene::sign(previous,[&](int x,int y,float a){canvas.ink(x,y,0,a*scene.alert);});
-  const float exposed=(240-scene.region)/2;
-  const float insetL=counterLabels.inset(0,exposed,scene.corners);
-  const float insetR=counterLabels.inset(1,exposed,scene.corners);
-  const float cy=avatar_scene::mix(67.5f,116,scene.corners);
+  const float doneX=counterX(0),activeX=counterX(1),cy=counterY();
   avatar_scene::Mask mask;avatar_scene::buildMask(scene,mask);
   mask.raster([&](int x,int y,int length) {
    for(int i=0;i<length;++i)canvas.ink(x+i,y,dark);
@@ -390,31 +390,31 @@ struct Preview {
   const float doneWidth=counterLabels.labels[0].width,activeWidth=counterLabels.labels[1].width;
   const auto& doneFont=counter_labels::font(counterLabels.labels[0].index);
   const auto& activeFont=counter_labels::font(counterLabels.labels[1].index);
-  const auto left=flight.offset(previous,true,insetL,240-insetR,doneWidth,activeWidth);
-  const auto right=flight.offset(previous,false,240-insetR,insetL,activeWidth,doneWidth);
+  const auto doneFlight=flight.offset(previous,true,doneX,activeX,doneWidth,activeWidth);
+  const auto activeFlight=flight.offset(previous,false,activeX,doneX,activeWidth,doneWidth);
   // Requests hide the counts (visually only) behind the pulsing field.
   const float shown=1-scene.alert;
   if(mode==19&&done>0&&!flight.busy(previous)&&!transfer.busy(previous)&&!stepOver.busy(previous))
-   director.accents(previous,insetL,cy+donePop.lift(previous)-doneFont.capHeight/2-2,
+   director.accents(previous,doneX,cy+donePop.lift(previous)-doneFont.capHeight/2-2,
                     [&](int x,int y,float a){canvas.ink(x,y,green,a*shown);});
   const auto light=[&](int x,int y,float a){canvas.ink(x,y,task_cues::kFlash,a);};
-  label(canvas,done,doneFont,insetL+left.x,cy+left.y,background,donePop,previous,doneRaster,doneSpring,
+  label(canvas,done,doneFont,doneX+doneFlight.x,cy+doneFlight.y,background,donePop,previous,doneRaster,doneSpring,
         transfer.labelAlpha(previous,true)*shown,0,0,mask.stepSide?&mask:nullptr);
   if(arrival.busy(previous)) {
    // Resting layout font for the new label; keep extensions in one font.
    const auto& fromFont=&fontFor(arrival.from)==&fontFor(arrival.to)?activeFont:fontFor(arrival.from);
-   arrival.draw(previous,fromFont,activeFont,240-insetR+right.x,cy+right.y,
+   arrival.draw(previous,fromFont,activeFont,activeX+activeFlight.x,cy+activeFlight.y,
        [&](const count_raster::Font& font,const char* text,float x,float y,bool flying) {
     (flying?flyRaster:activeRaster).render(font,text,x,y,[&](int px,int py,float a,bool outline) {
      canvas.ink(px,py,outline?background(px,py):0,a);
     });
    },light);
   } else {
-   label(canvas,active,activeFont,240-insetR+right.x,cy+right.y,background,activePop,previous,activeRaster,
+   label(canvas,active,activeFont,activeX+activeFlight.x,cy+activeFlight.y,background,activePop,previous,activeRaster,
          activeSpring,transfer.labelAlpha(previous,false)*shown,transfer.shakeX(previous),transfer.shakeY(previous));
   }
   transfer.crackles(previous,light);
-  transfer.flip(previous,doneFont,insetL,cy,
+  transfer.flip(previous,doneFont,doneX,cy,
       [&](const count_raster::Font& font,const char* text,float x,float y,float scale,float alpha) {
    count_raster::renderScaled(font,text,x,y,scale,[&](int px,int py,float a,bool outline) {
     canvas.ink(px,py,outline?background(px,py):0,a*alpha);

@@ -215,10 +215,12 @@ int main() {
  }
  const uint16_t green=0x262b,blue=0x3c1e,coral=0xf3b1;
  struct Fixture { int center;float done,active;uint16_t fill,portrait;float portraitPresence; };
+ // Labels sit on their status_sides screen side.
+ const int doneAt=status_sides::kDone<0?24:216,activeAt=240-doneAt;
  const Fixture fixtures[]={
-  {24,1,1,blue,0,0},{120,1,1,blue,0,0},{216,1,1,blue,0,0},
-  {24,1,0,blue,0,0},{216,0,1,blue,0,0},{120,1,1,coral,0,0},
-  {24,1,0,coral,green,1},{216,0,1,coral,coral,1}};
+  {doneAt,1,1,blue,0,0},{120,1,1,blue,0,0},{activeAt,1,1,blue,0,0},
+  {doneAt,1,0,blue,0,0},{activeAt,0,1,blue,0,0},{120,1,1,coral,0,0},
+  {doneAt,1,0,coral,green,1},{activeAt,0,1,coral,coral,1}};
  for(const auto& fixture:fixtures) {
   const auto background=[&](int x,int y) {
    return status_background::color(x,y,green,fixture.fill,fixture.done,fixture.active,

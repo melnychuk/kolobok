@@ -36,7 +36,7 @@ def main():
             assert len(raw) % FRAME_BYTES == 0
             frame = Image.frombytes("RGB", (240, 135), raw[-FRAME_BYTES:])
             x, y = index % 6 * 480, index // 6 * 304
-            draw.text((x + 8, y + 6), f"{'green left' if done and not active else 'blue right' if active and not done else 'paired'}: {label}", fill="white")
+            draw.text((x + 8, y + 6), f"{'green only' if done and not active else 'blue only' if active and not done else 'paired done / active'}: {label}", fill="white")
             sheet.paste(frame.resize((480, 270)), (x, y + 25))
         sheet.save(output / "counter-space.png")
         # Side labels accommodate the face; bottom labels grow inward while

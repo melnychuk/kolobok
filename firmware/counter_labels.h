@@ -1,9 +1,12 @@
 #pragma once
 #include "display_fonts.h"
 #include "roman_counts.h"
+#include "status_sides.h"
 
 // Font fitting is layout-specific. Side strips retain their 56px limit;
 // bottom labels grow inward from the corners and share the whole screen.
+// Arrays are indexed by status slot (0 done, 1 active); x() places a slot on
+// its screen side.
 namespace counter_labels {
 constexpr int kSideLimit=56,kMargin=8,kGap=10,kBottomBudget=240-2*kMargin-kGap;
 inline const count_raster::Font& font(int index) {
@@ -37,9 +40,9 @@ struct State {
    // Only reduce fonts if their actual combined widths would collide.
    // Reduce the wider label first; equal widths stay visually balanced.
    while(reserved[0][bottom[0]]+reserved[1][bottom[1]]>kBottomBudget) {
-    const int left=reserved[0][bottom[0]],right=reserved[1][bottom[1]];
-    if(left>=right&&bottom[0]<4)++bottom[0];
-    if(right>=left&&bottom[1]<4)++bottom[1];
+    const int done=reserved[0][bottom[0]],active=reserved[1][bottom[1]];
+    if(done>=active&&bottom[0]<4)++bottom[0];
+    if(active>=done&&bottom[1]<4)++bottom[1];
    }
   }
   if(!changed&&corners==lastCorners)return;
@@ -62,6 +65,10 @@ struct State {
   // Font promotions grow inward, never out through the screen edge while
   // the label is still travelling down from a narrow side strip.
   return eased>corner?eased:corner;
+ }
+ // Resting center x of status slot s (0 done, 1 active) on its own side.
+ float x(int s,float exposed,float corners) const {
+  return status_sides::fromEdge(status_sides::slotDirection(s),inset(s,exposed,corners));
  }
 };
 } // namespace counter_labels

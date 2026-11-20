@@ -18,10 +18,15 @@ static void finite(const eye_acting::Pose& p) {
 }
 int main() {
  const Mode modes[]={Mode::offline,Mode::idle,Mode::sleeping,Mode::working,Mode::waiting,Mode::finished,Mode::listening};
- const auto t=targets(120,50,24,216,116,true,true);
- assert(t.doneX<0&&t.activeX>0&&t.doneY>0&&t.activeY>0);
- const auto vertical=targets(90,67,24,216,67,false,true);
- assert(vertical.doneX==0&&vertical.activeX>0&&vertical.activeY==0);
+ // Gaze targets point at each counter's status_sides screen side.
+ const float doneAt=120+96.0f*status_sides::kDone,activeAt=120+96.0f*status_sides::kActive;
+ const auto t=targets(120,50,doneAt,activeAt,116,true,true);
+ assert(t.doneX*status_sides::kDone>0&&t.activeX*status_sides::kActive>0&&t.doneY>0&&t.activeY>0);
+ // Active only: the face fills the done side and looks across at the count.
+ const auto vertical=targets(120+30.0f*status_sides::kDone,67,doneAt,activeAt,67,false,true);
+ assert(vertical.doneX==0&&vertical.activeX*status_sides::kActive>0&&vertical.activeY==0);
+ // A glance never crosses the center toward the other side.
+ assert(targets(120,50,activeAt,doneAt,116,true,true).doneX==0);
  // Every directed state edge, at 20/30/60fps and across uint32 wrap.
  unsigned cases=0;
  for(auto from:modes)for(auto to:modes)if(from!=to)

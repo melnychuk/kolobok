@@ -55,19 +55,22 @@ int main() {
  float before=0,after=0,extraDent=0;
  for(int side: {-1,1})for(int kiss: {0,1})for(int strip: {48,72})
  for(uint32_t cadence: {17u,33u,50u}) {
-  const auto state=side<0?eye_acting::State::done:eye_acting::State::thinking;
+  // `side` is the counter's screen side; its status follows status_sides.
+  const bool isDone=side==status_sides::kDone;
+  const auto state=isDone?eye_acting::State::done:eye_acting::State::thinking;
   for(int clip=0;clip<eye_acting::clipCount(state);++clip) {
    avatar_interaction::Checks checks;checks.fixed=true;checks.actionCycle=kiss;
    face_physics::Surface surface;
    eye_acting::Player actor;actor.state=state;actor.index=clip;
    for(uint32_t ms=0;ms<8400;ms+=cadence) {
-    checks.update(ms,true,&surface,side<0,side>0);
+    checks.update(ms,true,&surface,isDone,!isDone);
     avatar_scene::Scene scene;scene.corners=0;scene.region=240-2*strip;
     scene.offset=-side*strip/2.0f;scene.eyeY=67.5f;
     scene.body=checks.apply(actor.body(ms),ms,true);scene.eyes=checks.apply(actor.eyes(ms),ms);
     surface.step(cadence*.001f,scene.body,false);scene.surface=&surface;
     scene.flowClock=ms*.0006f;
-    checks.shape(scene,ms,strip/2,240-strip/2,67.5f,14,14,23,23);
+    checks.shape(scene,ms,status_sides::fromEdge(status_sides::kDone,strip/2.0f),
+                 status_sides::fromEdge(status_sides::kActive,strip/2.0f),67.5f,14,14,23,23);
     avatar_scene::Mask mask,base;avatar_scene::buildMask(scene,mask);
     auto plain=scene;plain.poke.strength=0;avatar_scene::buildMask(plain,base);
     assert(memcmp(mask.left,base.left,sizeof(mask.left))==0);

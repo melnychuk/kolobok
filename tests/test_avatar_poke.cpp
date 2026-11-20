@@ -7,6 +7,9 @@
 #include "../firmware/display_fonts.h"
 
 using namespace avatar_interaction;
+static const int kDone=status_sides::kDone,kActive=status_sides::kActive;
+// Resting x of a counter `inset` from its status_sides screen edge.
+static float at(int side,float inset) { return status_sides::fromEdge(side,inset); }
 const count_raster::Font& fittingFont(const char* text) {
  const count_raster::Font* fonts[]={&kBadgeFont,&kMediumBadgeFont,&kSmallBadgeFont,
                                   &kTinyBadgeFont,&kCompactBadgeFont};
@@ -116,23 +119,24 @@ int main() {
  int performances=0;
  float minimumTravel=3;
  for(int paired=0;paired<2;++paired)for(int side=-1;side<=1;side+=2)
- for(int index=0;index<eye_acting::clipCount(side<0?eye_acting::State::done:eye_acting::State::thinking);++index)
+ for(int index=0;index<eye_acting::clipCount(side==kDone?eye_acting::State::done:eye_acting::State::thinking);++index)
  for(const char* text:{"I","III","VIII","LXXXVIII","XCIX+"}) {
+  const bool isDone=side==kDone;  // `side` is the counter's screen side
   const auto& font=fittingFont(text);
   const float width=count_raster::width(font,text),strip=fmaxf(48,width+16);
   scene=avatar_scene::Scene{};scene.corners=paired;scene.region=240-2*strip;
   scene.offset=paired?0:-side*strip/2;
   face_physics::Surface surface;scene.surface=&surface;
   Checks checks;checks.fixed=true;CounterSpring spring;
-  eye_acting::Player actor;actor.state=side<0?eye_acting::State::done:eye_acting::State::thinking;
-  actor.index=index;actor.started=side<0?4400:1400;
+  eye_acting::Player actor;actor.state=isDone?eye_acting::State::done:eye_acting::State::thinking;
+  actor.index=index;actor.started=isDone?4400:1400;
   float maximum=0,depthMaximum=0;
   for(uint32_t t=0;t<8400;t+=33) {
-   checks.update(t,true,&surface,paired||side<0,paired||side>0);
+   checks.update(t,true,&surface,paired||isDone,paired||!isDone);
    scene.body=checks.apply(actor.body(t),t,true);
    scene.eyes=checks.apply(actor.eyes(t),t);
    surface.step(.033f,scene.body,paired);scene.flowClock=t*.0006f;
-   checks.shape(scene,t,strip/2,240-strip/2,paired?116:67.5f,width,width,
+   checks.shape(scene,t,at(kDone,strip/2),at(kActive,strip/2),paired?116:67.5f,width,width,
                 font.capHeight,font.capHeight);
    avatar_scene::buildMask(scene,mask);
    if(mask.hand.radius>1) {
@@ -150,7 +154,7 @@ int main() {
                                   width,font.capHeight,paired,side);
    spring.update(.033f,depth,true,side);
    assert(isfinite(spring.x)&&fabsf(spring.x)<=3&&spring.y>=-2.5f&&spring.y<=3);
-   const uint32_t begin=side<0?4800:1800,end=side<0?6000:3000;
+   const uint32_t begin=isDone?4800:1800,end=isDone?6000:3000;
    if(t>=begin&&t<end) {
     maximum=fmaxf(maximum,paired?spring.y:side*spring.x);
     depthMaximum=fmaxf(depthMaximum,depth);
@@ -166,9 +170,10 @@ int main() {
 
  // Authored kiss is occasional, completed-only, eye-led and mouth-clipped.
  Checks kiss;kiss.fixed=true;kiss.actionCycle=1;kiss.update(0,true,nullptr,true,false);
- scene=avatar_scene::Scene{};scene.corners=0;scene.offset=24;scene.eyeY=67.5f;
- kiss.shape(scene,4400,24,216,67.5f,14,14,23,23);assert(scene.poke.kiss==0);
- kiss.shape(scene,5200,24,216,67.5f,14,14,23,23);assert(scene.poke.kiss==1);
+ const float doneX=at(kDone,24),activeX=at(kActive,24);
+ scene=avatar_scene::Scene{};scene.corners=0;scene.offset=24.0f*kActive;scene.eyeY=67.5f;
+ kiss.shape(scene,4400,doneX,activeX,67.5f,14,14,23,23);assert(scene.poke.kiss==0);
+ kiss.shape(scene,5200,doneX,activeX,67.5f,14,14,23,23);assert(scene.poke.kiss==1);
  const auto eyes=kiss.apply(eye_acting::p(),5110);
  assert(eyes.smile>.6f&&eyes.closeL>.8f&&eyes.closeR>.8f);
  scene.eyes=eyes;scene.body=kiss.apply(eye_acting::p(),5200,true);
@@ -181,11 +186,11 @@ int main() {
   const auto& font=fittingFont(text);
   const float width=count_raster::width(font,text),strip=fmaxf(48,width+16);
   scene=avatar_scene::Scene{};scene.corners=0;scene.region=240-2*strip;
-  scene.offset=strip/2;scene.eyes=eyes;
+  scene.offset=strip/2*kActive;scene.eyes=eyes;
   scene.body=kiss.apply(eye_acting::p(),5200,true);
   scene.eyeWidth=50*eyes.width;scene.eyeHeight=56*eyes.height;
   scene.eyeX=120+scene.offset+eyes.x;scene.eyeY=67.5f+eyes.y;
-  kiss.shape(scene,5200,strip/2,240-strip/2,67.5f,width,width,font.capHeight,font.capHeight);
+  kiss.shape(scene,5200,at(kDone,strip/2),at(kActive,strip/2),67.5f,width,width,font.capHeight,font.capHeight);
   avatar_scene::buildMask(scene,mask);
   memset(raster,0,sizeof(raster));
   avatar_scene::eyes(scene,mask,[&](int x,int y,float a){raster[y*240+x]=a;});
@@ -198,14 +203,14 @@ int main() {
  scene.corners=1;avatar_scene::buildMask(scene,mask);
  int pixels=0;avatar_scene::mouth(scene,mask,[&](int,int,float){++pixels;});
  assert(pixels==0); // Paired kiss acts through rim/eyes, never a wide mouth.
- kiss.shape(scene,5200,24,216,116,14,14,23,23,false,true);
+ kiss.shape(scene,5200,doneX,activeX,116,14,14,23,23,false,true);
  assert(scene.poke.strength==0&&scene.poke.kiss==0);
  kiss.update(5300,false);
- kiss.shape(scene,5400,24,216,116,14,14,23,23);
+ kiss.shape(scene,5400,doneX,activeX,116,14,14,23,23);
  assert(scene.poke.strength==0&&scene.poke.kiss==0);
  kiss.update(6000,true,nullptr,false,true);
- kiss.shape(scene,8200,24,216,67.5f,14,14,23,23);assert(scene.poke.kiss==0);
+ kiss.shape(scene,8200,doneX,activeX,67.5f,14,14,23,23);assert(scene.poke.kiss==0);
  Checks wrap;wrap.fixed=true;wrap.update(UINT32_MAX-99,true,nullptr,false,true);
- wrap.shape(scene,2100,24,216,67.5f,14,14,23,23);
- assert(scene.poke.side==1&&scene.poke.strength>0);
+ wrap.shape(scene,2100,doneX,activeX,67.5f,14,14,23,23);
+ assert(scene.poke.side==kActive&&scene.poke.strength>0);
 }

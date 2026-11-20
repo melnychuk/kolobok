@@ -13,7 +13,8 @@ constexpr eye_acting::Key releaseKeys[] = {
  {0,eye_acting::p(0,-2,1,1.08f)}, {230,eye_acting::p(0,4,1.04f,1.02f,0,0,.3f,0,0,1.04f,.98f,0,2,.5f)},
  {470,eye_acting::p(0,-3,1,1.12f,0,0,.4f,0,0,1,1.03f,0,-2,.5f)},
  {780,eye_acting::p(0,-3,1,1.12f,0,0,.4f)}, {1200,eye_acting::p()} };
-constexpr eye_acting::Clip tapClip={"Open completed",tapKeys,6};
+// A happy wink toward the completed counter (authored with it on the left).
+constexpr eye_acting::Clip tapClip=eye_acting::makeClip("Open completed",tapKeys,eye_acting::authoredDoneLeft);
 constexpr eye_acting::Clip releaseClip={"Dictation released",releaseKeys,5};
 struct ButtonCue {
  uint32_t started=0;
@@ -80,6 +81,9 @@ struct Startle {
 
 // Occasionally inspect the counters that actually exist. Active is focused;
 // completed is warm/happy. Single-counter checks reach across the vertical face.
+// A check's `side` is the screen direction of the inspected counter
+// (status_sides::kDone or kActive), so looks, presses and rim excitation all
+// point at that counter wherever the layout puts it.
 //
 // Scheduling. Live firmware/widget checks are occasional events: one check at a
 // time, only while the acting player rests between clips (the player holds its
@@ -102,7 +106,7 @@ struct Checks {
  bool press=true,kissing=false,excited=false;
  float jitterX=0,jitterY=0;
  struct Moment { int side=0;uint32_t local=0;bool press=true,kiss=false;float jx=0,jy=0; };
- static uint32_t length(int which) { return which>0?kActiveLength:kDoneLength; }
+ static uint32_t length(int which) { return which==status_sides::kDone?kDoneLength:kActiveLength; }
  float unit() {
   if(!seed)seed=1;
   seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;
@@ -116,7 +120,7 @@ struct Checks {
   if(!surface||!which)return;
   // The authored press excites the nearby free rim; numerals still react
   // only if that travelling contour actually reaches their resting bounds.
-  const float center=which<0?4:27;
+  const float center=which<0?4:27;  // rim nodes near that screen side
   for(int i=0;i<face_physics::Surface::count;++i) {
    const float distance=(i-center)/2.8f;
    surface->velocity[i]+=40*expf(-.5f*distance*distance);
@@ -125,7 +129,7 @@ struct Checks {
  void begin(uint32_t now,int which) {
   side=which;checkStart=now;excited=false;
   press=count==0||unit()>=.34f;
-  kissing=which<0&&press&&actionCycle%3==1;
+  kissing=which==status_sides::kDone&&press&&actionCycle%3==1;
   jitterX=(unit()*2-1)*3;jitterY=(unit()*2-1)*2.5f;
   ++count;
  }
@@ -142,8 +146,8 @@ struct Checks {
   if(fixed) {
    const uint32_t phase=(now-started)%kCycle;
    if(phase<previousPhase)++actionCycle;
-   const int which=activePresent&&phase>=1400+kExciteAt&&previousPhase<1400+kExciteAt?1:
-                   donePresent&&phase>=4400+kExciteAt&&previousPhase<4400+kExciteAt?-1:0;
+   const int which=activePresent&&phase>=1400+kExciteAt&&previousPhase<1400+kExciteAt?status_sides::kActive:
+                   donePresent&&phase>=4400+kExciteAt&&previousPhase<4400+kExciteAt?status_sides::kDone:0;
    excite(surface,which);
    previousPhase=phase;
    return;
@@ -152,14 +156,14 @@ struct Checks {
    const uint32_t local=now-checkStart;
    if(!excited&&local>=kExciteAt) { excited=true;if(press)excite(surface,side); }
    if(local<length(side)+kBodyLag)return;
-   if(side<0&&press)++actionCycle;
+   if(side==status_sides::kDone&&press)++actionCycle;
    lastSide=side;side=0;
    nextAt=now+kGapMin+static_cast<uint32_t>(unit()*(kGapMax-kGapMin));
   }
   if(!ready||static_cast<int32_t>(now-nextAt)<0)return;
-  int which=activePresent?1:-1;
+  int which=activePresent?status_sides::kActive:status_sides::kDone;
   if(activePresent&&donePresent&&count>0)which=unit()<.7f?-lastSide:lastSide;
-  if(which==0)which=1;
+  if(which==0)which=status_sides::kActive;
   begin(now,which);
  }
  Moment moment(uint32_t now,bool body) const {
@@ -171,7 +175,7 @@ struct Checks {
    const bool done=t>=4400;
    const uint32_t begin=done?4400:1400,end=done?7000:3500;
    if(t<begin||t>=end)return m;
-   m.side=done?-1:1;m.local=t-begin;m.kiss=done&&actionCycle%3==1;
+   m.side=done?status_sides::kDone:status_sides::kActive;m.local=t-begin;m.kiss=done&&actionCycle%3==1;
    return m;
   }
   if(side==0)return m;
@@ -184,25 +188,28 @@ struct Checks {
  eye_acting::Pose apply(const eye_acting::Pose& base,uint32_t now,bool body=false) const {
   const Moment m=moment(now,body);
   if(!m.side)return base;
-  const bool done=m.side<0;
+  const bool done=m.side==status_sides::kDone;
   if(done?!donePresent:!activePresent)return base;
   const uint32_t end=length(m.side),local=m.local;
+  const float toward=static_cast<float>(m.side);
   const float weight=eye_acting::smooth(local/450.0f)*
                      (1-eye_acting::smooth(local>end-500?(local-(end-500))/500.0f:0));
-  auto look=done?eye_acting::p(-15,13,1.04f,1.06f,0,0,.72f,0,0,1.06f,1.02f,-10,3,.65f):
-                 eye_acting::p(15,13,1.05f,.94f,.22f,.24f,0,0,0,1.06f,1.02f,10,3,.45f);
+  // Lid asymmetry is authored for the original right-hand active counter.
+  auto look=done?eye_acting::p(15*toward,13,1.04f,1.06f,0,0,.72f,0,0,1.06f,1.02f,10*toward,3,.65f):
+                 eye_acting::p(15*toward,13,1.05f,.94f,.22f,.24f,0,0,0,1.06f,1.02f,10*toward,3,.45f);
+  if(!done&&status_sides::kMirrorAuthored)look=eye_acting::swapEyes(look);
   if(!(donePresent&&activePresent)) {
    // The number is beside the tall face, not below it. Reach sideways without
    // widening the layout or losing the vertical mouth / positive done acting.
-   look.x=done?-20:20;look.y=3;
-   look.lean=done?-6:6;look.lift=0;look.bodyWidth=1.02f;
+   look.x=20*toward;look.y=3;
+   look.lean=6*toward;look.lift=0;look.bodyWidth=1.02f;
   }
   look.x+=m.jx;look.y+=m.jy;
   // A deliberate little press and recoil, not continuous bobbing.
   if(m.press) {
    const float bump=eye_acting::smooth(local/650.0f)*
                     (1-eye_acting::smooth(local>950?(local-950)/450.0f:0));
-   look.lean+=(done?-3:3)*bump;look.bodyHeight+=.035f*bump;
+   look.lean+=3*toward*bump;look.bodyHeight+=.035f*bump;
   }
   // Every third completed press is an affectionate kiss. Keep smiling curved
   // closures; mouth/contour follow separately, without modifying task state.
@@ -228,14 +235,14 @@ struct Checks {
   scene.poke=avatar_scene::Poke{};
   const Moment m=moment(now,true);
   if(!m.side||!m.press)return;
-  const bool done=m.side<0;
+  const bool done=m.side==status_sides::kDone;
   if(done?(!donePresent||!doneReadable):(!activePresent||!activeReadable))return;
   const uint32_t local=m.local;
   const float press=eye_acting::smooth(local/650.0f)*
                     (1-eye_acting::smooth(local>950?(local-950)/450.0f:0));
   const float recoil=local>1400?eye_acting::smooth((local-1400)/120.0f)*
                                 (1-eye_acting::smooth(local>1520?(local-1520)/250.0f:0)):0;
-  scene.poke.side=done?-1:1;scene.poke.strength=press-.14f*recoil;
+  scene.poke.side=static_cast<float>(m.side);scene.poke.strength=press-.14f*recoil;
   scene.poke.cx=done?doneX:activeX;scene.poke.cy=cy;
   scene.poke.width=done?doneWidth:activeWidth;scene.poke.height=done?doneHeight:activeHeight;
   scene.poke.kiss=m.kiss?press:0;
@@ -312,8 +319,9 @@ struct CounterFlight {
    const float midpoint=120;
    // Centre the whole pair, not just its centres: unequal wide bottom labels
    // must fit on screen as well as retain their ten-pixel internal gap.
-   const float target=midpoint+(done?-(aw+10)/2:(dw+10)/2);
-   const float reach=done?fmaxf(0,target-cx):fminf(0,target-cx);
+   const float toward=static_cast<float>(status_sides::direction(done));
+   const float target=midpoint+toward*((done?aw:dw)+10)/2;
+   const float reach=toward<0?fmaxf(0,target-cx):fminf(0,target-cx);
    result.x=reach*travel;
    result.y=-kCarry*travel+2*(1-eye_acting::smooth((t-260)/120.0f));
   } else {
@@ -348,11 +356,11 @@ struct CounterFlight {
             float cy,float doneHeight,float activeHeight,avatar_scene::Hands& out) const {
   out=avatar_scene::Hands{};
   if(!busy(now))return;
-  const auto left=offset(now,true,doneX,activeX,doneWidth,activeWidth);
-  const auto right=offset(now,false,activeX,doneX,activeWidth,doneWidth);
+  const auto done=offset(now,true,doneX,activeX,doneWidth,activeWidth);
+  const auto active=offset(now,false,activeX,doneX,activeWidth,doneWidth);
   out.reach[0]=handReach(now,true);out.reach[1]=handReach(now,false);
-  out.x[0]=doneX+left.x;out.y[0]=cy+left.y-doneHeight/2+kGrip;
-  out.x[1]=activeX+right.x;out.y[1]=cy+right.y-activeHeight/2+kGrip;
+  out.x[0]=doneX+done.x;out.y[0]=cy+done.y-doneHeight/2+kGrip;
+  out.x[1]=activeX+active.x;out.y[1]=cy+active.y-activeHeight/2+kGrip;
   out.halfWidth[0]=lobeRadius(doneWidth);out.halfWidth[1]=lobeRadius(activeWidth);
  }
  // Body lift in pixels (negative is up); the physics surface adds the lag.
@@ -372,18 +380,22 @@ struct CounterFlight {
   const uint32_t t=phase(at);
   const float weight=eye_acting::smooth(t/260.0f)*
                      (1-eye_acting::smooth(t>kRelease?(t-kRelease)/450.0f:0));
-  const auto left=offset(at,true,24,216,40,40);
-  const auto right=offset(at,false,216,24,40,40);
+  // Nominal resting corners, 96px either side of the center.
+  const float doneAt=120+96.0f*status_sides::kDone,activeAt=120+96.0f*status_sides::kActive;
+  const auto done=offset(at,true,doneAt,activeAt,40,40);
+  const auto active=offset(at,false,activeAt,doneAt,40,40);
   const float follow=eye_acting::smooth(t>kReach+1350?(t-kReach-1350)/450.0f:0);
   const float doneWeight=follow;
   auto look=eye_acting::p();
-  look.x=avatar_scene::mix((96+right.x)/5,(-96+left.x)/5,doneWeight);
-  look.y=13+avatar_scene::mix(right.y,left.y,doneWeight)*.22f;
+  look.x=avatar_scene::mix((96.0f*status_sides::kActive+active.x)/5,
+                           (96.0f*status_sides::kDone+done.x)/5,doneWeight);
+  look.y=13+avatar_scene::mix(active.y,done.y,doneWeight)*.22f;
   // Firm scrutiny for active work; soften only when following done. No angry
   // tilt or smile on the active beat, and no change to the flight/gaze clocks.
   look.smile=.63f*doneWeight;look.width=1.04f;
   look.height=avatar_scene::mix(.94f,1.04f,doneWeight);
   look.upperL=.22f*(1-doneWeight);look.upperR=.24f*(1-doneWeight);
+  if(status_sides::kMirrorAuthored)look=eye_acting::swapEyes(look);  // authored for active right
   look.lean=look.x*.16f;look.lift=-1;look.flow=.55f;
   auto result=eye_acting::mix(base,look,weight);
   if(body) {
