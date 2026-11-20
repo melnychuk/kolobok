@@ -101,7 +101,7 @@ export class Device {
     // Camera choreography: a scroll-driven pose plus a springy drag offset.
     this.pose = { az: -18, el: 9, dist: 178, tx: 0, ty: 0, sx: 0.18, sy: 0, exposure: 1.05, reveal: 1 };
     this.view = { ...this.pose };
-    this.drag = { az: 0, el: 0, active: false, sticky: false };
+    this.drag = { az: 0, el: 0, enabled: false };
     this.snapNext = true;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -570,23 +570,25 @@ export class Device {
     };
     let last = null;
     el.addEventListener("pointermove", (event) => {
-      if (this.drag.active && last && event.pointerId === this.dragId) {
+      if (this.drag.enabled && last && event.pointerId === this.dragId) {
         this.drag.az -= (event.clientX - last.x) * 0.35;
         this.drag.el = Math.max(-25, Math.min(40, this.drag.el + (event.clientY - last.y) * 0.25));
         last = { x: event.clientX, y: event.clientY };
         return;
       }
-      if (!this.pressed) el.style.cursor = onKey(event) ? "pointer" : "grab";
+      if (!this.pressed && this.dragId === undefined) el.style.cursor = onKey(event) ? "pointer" : "";
     });
     el.addEventListener("pointerdown", (event) => {
-      el.setPointerCapture(event.pointerId);
+      if (event.button !== 0 || this.pointerId !== undefined || this.dragId !== undefined) return;
       if (onKey(event)) {
+        el.setPointerCapture(event.pointerId);
         event.preventDefault();
         this.pointerId = event.pointerId;
         this.press(true);
         return;
       }
-      this.drag.active = true;
+      if (!this.drag.enabled) return;
+      el.setPointerCapture(event.pointerId);
       this.dragId = event.pointerId;
       last = { x: event.clientX, y: event.clientY };
       el.style.cursor = "grabbing";
@@ -597,13 +599,14 @@ export class Device {
         this.press(false);
       }
       if (this.dragId === event.pointerId) {
-        this.drag.active = false;
         this.dragId = undefined;
-        el.style.cursor = "grab";
+        last = null;
+        el.style.cursor = "";
       }
     };
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
+    el.addEventListener("lostpointercapture", up);
     // The copy cards cover the canvas, so follow the mouse page-wide.
     addEventListener("pointermove", (event) => {
       this.cursor = event.pointerType === "mouse" ? { x: event.clientX, y: event.clientY } : null;
@@ -616,7 +619,7 @@ export class Device {
   // stick actually is on screen (the camera shifts it beside the copy).
   #updateTilt() {
     let x = 0, y = 0;
-    if (this.cursor && !this.reduceMotion && !this.drag.active) {
+    if (this.drag.enabled && this.cursor && !this.reduceMotion && this.dragId === undefined) {
       const rect = this.renderer.domElement.getBoundingClientRect();
       const at = this.root.getWorldPosition(new THREE.Vector3()).project(this.camera);
       const px = rect.left + (at.x + 1) / 2 * rect.width, py = rect.top + (1 - at.y) / 2 * rect.height;
@@ -647,7 +650,7 @@ export class Device {
   setBlueprint(on) { this.blueprintTarget = on ? 1 : 0; }
   setGlow(hex) { this.glowTarget.set(hex); }
   flip() { this.flipped = !this.flipped; }
-  // Scroll choreography target; drag offsets ease home unless `sticky`.
+  // Scroll choreography target, independent of the playground rotation.
   // `follow` is the per-frame catch-up (default lazy 0.075); a scroll scene
   // whose progress is already eased passes a quick one to stay in step.
   setPose(pose, snap = false, follow = 0.075) {
@@ -655,7 +658,18 @@ export class Device {
     this.follow = follow;
     if (snap || this.reduceMotion) this.snapNext = true;
   }
-  setStickyDrag(on) { this.drag.sticky = on; }
+  setRotationEnabled(on) {
+    if (on === this.drag.enabled) return;
+    this.drag.enabled = on;
+    const el = this.renderer.domElement;
+    el.classList.toggle("can-rotate", on);
+    el.style.cursor = "";
+    if (!on && this.dragId !== undefined) {
+      const id = this.dragId;
+      this.dragId = undefined;
+      if (el.hasPointerCapture(id)) el.releasePointerCapture(id);
+    }
+  }
   // Waking up: start `from` × further away and slowly dolly in over `ms`.
   // Multiplies the camera distance only, so scrolling meanwhile still works.
   wakeZoom(from, ms) {
@@ -693,7 +707,7 @@ export class Device {
     const k = this.snapNext ? 1 : this.follow ?? 0.075;
     this.snapNext = false;
     for (const key of Object.keys(this.pose)) this.view[key] = damp(this.view[key], this.pose[key], k);
-    if (!this.drag.active && !this.drag.sticky) {
+    if (!this.drag.enabled) {
       this.drag.az = damp(this.drag.az, 0, 0.04);
       this.drag.el = damp(this.drag.el, 0, 0.04);
     }

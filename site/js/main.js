@@ -89,7 +89,7 @@ async function main() {
       pressed: false,
       on(name, fn) { handlers[name] = fn; },
       press(down) { this.pressed = down; handlers[down ? "buttondown" : "buttonup"]?.(); },
-      setShell() {}, setBlueprint() {}, setGlow() {}, flip() {}, setPose() {}, setStickyDrag() {}, shake() {},
+      setShell() {}, setBlueprint() {}, setGlow() {}, flip() {}, setPose() {}, setRotationEnabled() {}, shake() {},
       render() {
         if (!avatar.dirty) return;
         image.data.set(avatar.rgba);
@@ -283,8 +283,7 @@ async function main() {
     },
     play: {
       pose: { az: 16, el: 10, dist: 180, tx: 0, ty: 0, exposure: 1.05, reveal: 1 },
-      enter() { calm({ active: 2, done: 1 }); device.setStickyDrag(true); },
-      leave() { device.setStickyDrag(false); },
+      enter() { calm({ active: 2, done: 1 }); },
     },
   };
 
@@ -449,8 +448,13 @@ async function main() {
     card.style.visibility = shown > 0.001 ? "visible" : "hidden";
     card.style.pointerEvents = shown > 0.5 ? "auto" : "none";
   }
+  const playground = $("#play");
   function onScroll() {
     const mid = scrollY + innerHeight / 2;
+    // Only hand over the camera once the visitor is in the playground, not
+    // when its copy starts fading in. Lock it again immediately on leaving.
+    const playTop = playground.offsetTop;
+    device.setRotationEnabled(mid >= playTop && mid < playTop + playground.offsetHeight);
     // A pinned scene settles when its pin releases; other chapters at centre.
     const centres = sections.map((s) => s.offsetTop +
       (s.classList.contains("scene") ? s.offsetHeight - innerHeight / 2 : s.offsetHeight / 2));

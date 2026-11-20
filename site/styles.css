@@ -62,7 +62,8 @@ body::after {
 }
 .canvas-host { position: absolute; inset: 0; opacity: 0; transition: opacity .7s ease-out; }
 .stage.ready .canvas-host { opacity: 1; }
-.canvas-host canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; cursor: grab; }
+.canvas-host canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; }
+.canvas-host canvas.can-rotate { cursor: grab; }
 #flat-screen { display: none; }
 .stage.flat #flat-screen {
   display: block; position: absolute; inset: 42% auto auto 50%; transform: translate(-50%, -50%);
