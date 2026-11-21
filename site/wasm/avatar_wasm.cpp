@@ -73,8 +73,10 @@ __attribute__((export_name("stick_set_display"))) void stick_set_display(int dit
  if(cache.dither!=(dither!=0)) { cache.dither=dither!=0;cache.valid=false; }
  display::alphaLevels=alphaLevels<0?0:alphaLevels>16?16:alphaLevels;
 }
-// Desktop widget theme: 1 = light (dark gray eyes and ink, paler status
-// colors), 0 = dark. The site never calls this. Takes effect on the next frame.
+// Light mode (the side key on the device): 1 = light (off-white face, dark
+// gray eyes and ink, paler status colors), 0 = dark (the default; frames are
+// unchanged). The Herdr widget follows its sidebar; the site's light chapter
+// and playground switch set it. Takes effect on the next frame.
 __attribute__((export_name("stick_set_theme"))) void stick_set_theme(int light) {
  if(!avatar)stick_init();
  avatar->preview.light=light!=0;

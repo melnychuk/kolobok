@@ -160,6 +160,29 @@ async function main() {
   voiceBtn.addEventListener("pointerup", () => press(false));
   voiceBtn.addEventListener("pointerleave", () => device.pressed && press(false));
 
+  // --- Theme -----------------------------------------------------------------
+  // The playground's Light switch is the side key; the light chapter and the
+  // Herdr chapter borrow the face and hand it back on leaving.
+  let lightPinned = false;
+  let herdrLight = true;
+  const lightBtn = $("#btn-light");
+  lightBtn.onclick = () => {
+    lightPinned = !lightPinned;
+    lightBtn.setAttribute("aria-pressed", lightPinned);
+    avatar.setTheme(lightPinned);
+    toast(lightPinned ? "Side key: light mode" : "Side key: dark mode");
+  };
+  // Herdr chapter: the theme switch shows that screenshot and gives the
+  // stick the face Herdr would give it.
+  const shot = $(".herdr-shot");
+  let inHerdr = false;
+  $$(".hm-theme [role=tab]", shot).forEach((tab, _, tabs) => tab.addEventListener("click", () => {
+    herdrLight = tab.dataset.theme === "light";
+    shot.dataset.theme = tab.dataset.theme;
+    tabs.forEach((t) => t.setAttribute("aria-selected", t === tab));
+    if (inHerdr) avatar.setTheme(herdrLight);
+  }));
+
   // --- Chapters ------------------------------------------------------------
   // Timers belong to the current chapter and are cleared when it changes.
   let timers = [];
@@ -280,6 +303,34 @@ async function main() {
       pose: { az: -38, el: 26, dist: 190, tx: -2, ty: 0, exposure: 1.1, reveal: 1 },
       enter() { calm({ active: 2, done: 1 }); device.setBlueprint(true); },
       leave() { if (!blueprintPinned) device.setBlueprint(false); },
+    },
+    light: {
+      pose: { az: 20, el: 8, dist: 156, tx: 0, ty: 0, exposure: 1.05, reveal: 1 },
+      awake: true,
+      enter() {
+        // The light face through its colors: working and done, then a
+        // request's yellow pulse, then back.
+        avatar.setTheme(true);
+        const cycle = () => {
+          calm({ active: 2, done: 1 });
+          later(() => set({ blocked: 1 }), 4200);
+          later(() => set({ blocked: 0 }), 8600);
+        };
+        cycle();
+        every(cycle, 11000);
+      },
+      leave() { avatar.setTheme(lightPinned); },
+    },
+    herdr: {
+      pose: { az: -22, el: 10, dist: 176, tx: 2, ty: 0, exposure: 1.05, reveal: 1 },
+      awake: true,
+      enter() {
+        // The screenshot's counts: two working, one unread done.
+        inHerdr = true;
+        avatar.setTheme(herdrLight);
+        calm({ active: 2, done: 1 });
+      },
+      leave() { inHerdr = false; avatar.setTheme(lightPinned); },
     },
     play: {
       pose: { az: 16, el: 10, dist: 180, tx: 0, ty: 0, exposure: 1.05, reveal: 1 },

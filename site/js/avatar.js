@@ -49,6 +49,7 @@ class Avatar {
     this.last = null;
     this.dirty = false;
     this.awake = false; // hold idle-awake (site intro) instead of dozing
+    this.light = false;
     this.clips = STATES.map((_, s) =>
       Array.from({ length: exports.stick_clip_count(s) }, (_, i) => ({
         state: s,
@@ -114,6 +115,13 @@ class Avatar {
       dst[j + 3] = 255;
     }
     this.dirty = true;
+  }
+
+  // Light mode (avatar_palette.h): off-white face, dark gray eyes and
+  // numerals, paler status colors. Older avatar.wasm builds stay dark.
+  setTheme(light) {
+    this.light = !!light;
+    this.e.stick_set_theme?.(this.light ? 1 : 0);
   }
 
   tap() { this.e.stick_button(0); }

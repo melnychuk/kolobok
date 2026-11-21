@@ -21,6 +21,12 @@ when Herdr gets focus again. Activity takes priority over dozing.
 
 ![The outlined Stick display above Agents in a dark Herdr sidebar](media/herdr-widget.png)
 
+The site's Herdr screenshots (`site/media/herdr-light.webp` and `herdr-dark.webp`)
+come from `scripts/capture-herdr-shot.py`. It starts a separate Herdr with its own
+home, core session and config, fake repos in a temporary `~/demo`, and Copilot CLI
+working on a small task with its MCP servers off. It saves one PNG per appearance;
+crop and convert them to WebP for the site.
+
 ## Install or upgrade
 
 You need **Herdr Desktop** (`herdr-app`, tested with 0.1.13), **Node.js 20+**,

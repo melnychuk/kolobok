@@ -172,6 +172,32 @@
           </div>
         </section>
 
+        <section class="chapter right" data-chapter="light">
+          <div class="card">
+            <span class="kicker k-light">Light mode</span>
+            <h2>Lights on? Me too.</h2>
+            <p>Click my side key and I put on my light face: dark gray eyes with softer blue, green and yellow. I remember it next time.</p>
+            <p class="tiny">Click again for the dark face. Or try it in the playground.</p>
+          </div>
+        </section>
+
+        <section class="chapter left" id="herdr" data-chapter="herdr">
+          <div class="card">
+            <span class="kicker k-blue">Herdr Desktop</span>
+            <h2>Stick at home? I’m still here.</h2>
+            <p>Unplug me and I move into Herdr Desktop’s sidebar, right above Agents. Same face, same counts, drawn by the same renderer. Plug me back in and I step aside.</p>
+            <div class="herdr-shot" data-theme="light">
+              <img class="hs-light" src="media/herdr-light.webp" width="900" height="801" loading="lazy" alt="Herdr Desktop in a light theme: the Stick avatar sits above Agents, light-faced, while Copilot CLI works in the acme-api space">
+              <img class="hs-dark" src="media/herdr-dark.webp" width="900" height="801" loading="lazy" alt="The same Herdr Desktop window in a dark theme, with the Stick avatar's dark face">
+              <div class="segmented hm-theme" role="tablist" aria-label="Herdr theme">
+                <button role="tab" data-theme="light" aria-selected="true">Light theme</button>
+                <button role="tab" data-theme="dark" aria-selected="false">Dark theme</button>
+              </div>
+            </div>
+            <p class="tiny">A light Herdr theme gets my light face. <a href="#setup">Install the widget</a>. No Stick yet? <a href="https://shop.m5stack.com/products/m5sticks3-esp32s3-mini-iot-dev-kit" target="_blank" rel="noopener">Get an M5StickS3 from M5Stack</a>.</p>
+          </div>
+        </section>
+
         <section class="chapter right play" id="play" data-chapter="play">
           <div class="card panel playground">
             <span class="kicker k-yellow">Playground</span>
@@ -235,6 +261,7 @@
             <div class="pg-foot pg-pane" id="pg-pane-shell">
               <span class="pg-label">Shell</span>
               <div class="swatches" id="swatches" role="group" aria-label="Shell color"></div>
+              <button class="switch" id="btn-light" aria-pressed="false" title="Light mode (side key)"><span class="knob" aria-hidden="true"></span>Light</button>
               <button class="switch" id="btn-sound" aria-pressed="true" title="Attention chime"><span class="knob" aria-hidden="true"></span>Chime</button>
             </div>
           </div>
@@ -261,6 +288,7 @@
           <button role="tab" aria-selected="true" data-target="agent">With an agent</button>
           <button role="tab" aria-selected="false" data-target="install">Install script</button>
           <button role="tab" aria-selected="false" data-target="flash">Flash firmware</button>
+          <button role="tab" aria-selected="false" data-target="herdr">Herdr widget</button>
           <button role="tab" aria-selected="false" data-target="manual">By hand</button>
         </div>
         <div data-panel="agent">
@@ -284,6 +312,12 @@ curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash -s -- --flash
 
 # firmware only
 curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash -s -- --flash-only</code></pre>
+        </div>
+        <div data-panel="herdr" hidden>
+          <p>No Stick needed: put the avatar above Agents in Herdr Desktop’s sidebar. Needs Herdr Desktop, Node.js 20+ and Python 3 on macOS or Linux; it hides itself while a Stick is plugged in. See <code>docs/herdr-widget.md</code>.</p>
+<pre data-copy><code>git clone https://github.com/melnychuk/stick-s3.git && cd stick-s3
+python3 scripts/install-herdr-avatar.py
+herdr-app do layout.switch '{"name":"stick-s3"}'</code></pre>
         </div>
         <div data-panel="manual" hidden>
           <p>Prefer doing it yourself? <code>docs/linux-herdr.md</code> and <code>docs/macos-herdr.md</code> cover the bridges; the README covers building the firmware with Arduino CLI.</p>

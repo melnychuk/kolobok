@@ -88,7 +88,7 @@ struct Preview {
  eye_acting::State state;
  int index,mode,done=2,active=3,shownDone=2,shownActive=3;
  bool healthy=true;
- bool light=false;  // Light theme (avatar_palette); the site never sets it.
+ bool light=false;  // Light theme (avatar_palette); dark by default.
  avatar_scene::Scene scene;
  counter_space::State counterSpace;
  counter_labels::State counterLabels;
