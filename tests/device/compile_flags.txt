@@ -1,0 +1,5 @@
+-xc++
+-std=c++17
+-ffp-contract=off
+-I.
+-I../../firmware
