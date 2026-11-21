@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
     if (ms == 27000) { b.pressed = b.was_pressed = true; b.pressed_since = ms; }
     if (ms == 27080) { b.pressed = false; b.was_released = b.was_clicked = true; }
     // A loud noise from the left.
-    if (ms == 29000) pendingStartle = .8f;
+    if (ms == 29000) avatar.pendingStartle = .8f;
     loop();
     a.was_pressed = a.was_released = a.was_clicked = false;
     b.was_pressed = b.was_released = b.was_clicked = false;
