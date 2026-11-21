@@ -6,7 +6,9 @@ WebAssembly binary as the [Stick site](https://melnychuk.github.io/stick-s3/).
 The image fits within **120 × 67.5 logical pixels** in a **76 px** slot and
 shrinks with the sidebar. At 2× Retina scale, that is the Stick's native
 240 × 135-pixel size. The renderer uses Herdr's sidebar color so the background blends
-with the dark theme, and a thin theme-colored outline marks the display edge.
+with the theme, and a thin theme-colored outline marks the display edge. With a
+light theme (a light sidebar), the avatar switches to the Stick's light mode:
+dark gray eyes and numerals with paler blue, green and yellow status colors.
 
 On macOS and Linux, the widget appears when the physical Stick is unplugged.
 When the Stick is detected over USB, Herdr collapses the slot and stops rendering

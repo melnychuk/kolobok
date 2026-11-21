@@ -26,7 +26,10 @@ inline uint16_t blend(uint16_t a,uint16_t b,float t) {
 inline float pulse(uint32_t ms) {
  return .5f-.5f*cosf((ms%kPulsePeriod)*(6.2831853f/kPulsePeriod));
 }
-inline uint16_t field(uint32_t ms) { return blend(kYellow,kOrange,pulse(ms)); }
+// Light mode passes paler endpoints; the pulse itself is unchanged.
+inline uint16_t field(uint32_t ms,uint16_t from=kYellow,uint16_t to=kOrange) {
+ return blend(from,to,pulse(ms));
+}
 
 // Large black `!` above the head, gently bobbing (1.8s exact period).
 constexpr float kSignX=120,kSignY=21;

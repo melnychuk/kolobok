@@ -33,7 +33,7 @@ volatile float benchmarkSink=0;
 int main(int argc,char** argv) {
  status_background::RowCache cache;
  uint16_t rows[4][240]={};
- const status_background::State initial={0x262b,0x3c1e,0,1,1,0,0xf7fc,0,0xfe62,0};
+ const status_background::State initial={0x262b,0x3c1e,0,1,1,0,0xf7fc,0,0xfe62,0,0};
  const auto checkRows=[&](const status_background::State& state,bool miss) {
   int calls=0;
   const bool refreshed=cache.update(state,[&](int x,int y,uint16_t color) {
@@ -43,12 +43,12 @@ int main(int argc,char** argv) {
   for(int y=0;y<4;++y)for(int x=0;x<240;++x) {
    assert(rows[y][x]==status_background::color(x,y,state.done,state.active,
           state.donePresence,state.activePresence,state.portrait,state.portraitPresence,
-          state.wash,state.washPresence,state.alert,state.alertPresence));
+          state.wash,state.washPresence,state.alert,state.alertPresence,true,state.base));
    ++comparisons;
   }
  };
  checkRows(initial,true);checkRows(initial,false);
- for(int member=0;member<10;++member) {
+ for(int member=0;member<11;++member) {
   auto changed=initial;
   switch(member) {
    case 0:changed.done^=1;break;
@@ -61,6 +61,7 @@ int main(int argc,char** argv) {
    case 7:changed.washPresence=nextafterf(0,1);break;
    case 8:changed.alert^=1;break;
    case 9:changed.alertPresence=nextafterf(0,1);break;
+   case 10:changed.base^=1;break;
   }
   checkRows(changed,true);checkRows(changed,false);checkRows(initial,true);
  }
@@ -79,6 +80,10 @@ int main(int argc,char** argv) {
   assert(status_background::color(x,y,0x262b,0x3c1e,1,.6f,0xf3b1,.3f,0xf7fc,0)==
          status_background::color(x,y,0x262b,0x3c1e,1,.6f,0xf3b1,.3f));
   assert(status_background::color(x,y,0x262b,0x3c1e,1,.6f,0xf3b1,.3f,0xf7fc,1)==0xf7fc);
+  // A zero base (dark mode) is bit-identical; absent statuses show the base.
+  assert(status_background::color(x,y,0x262b,0x3c1e,1,.6f,0xf3b1,.3f,0,0,0,0,true,0)==
+         status_background::color(x,y,0x262b,0x3c1e,1,.6f,0xf3b1,.3f));
+  assert(status_background::color(x,y,0x262b,0x3c1e,0,0,0,0,0,0,0,0,true,0xf7be)==0xf7be);
  }
  const count_raster::Font* fonts[]={&kBadgeFont,&kMediumBadgeFont,&kSmallBadgeFont,
                                    &kTinyBadgeFont,&kCompactBadgeFont};

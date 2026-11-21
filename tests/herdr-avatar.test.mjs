@@ -23,8 +23,33 @@ test("Herdr statuses are modeled as firmware work (including blocked) and unread
   const counts = summarize(["blocked", "working", "working", "done", null, "idle"].map((status) => ({ status })));
   assert.deepEqual(counts, { working: 2, blocked: 1, done: 1 });
   assert.deepEqual(control({ active: counts.working + counts.blocked, blocked: counts.blocked, done: counts.done }),
-    { active: 3, blocked: 1, done: 1, focused: false, background: 0, width: 120 });
+    { active: 3, blocked: 1, done: 1, focused: false, background: 0, light: false, width: 120 });
   assert.equal(control({ width: 200 }).width, 120);
+  assert.equal(control({ light: true }).light, true);
+  assert.equal(control({ light: "yes" }).light, false);
+});
+
+test("light mode: dark gray eyes, paler statuses, and the sidebar color as the face", async () => {
+  const background = 0xf3f4f6;
+  const colors = (/** @type {Uint8Array} */ rgb) => {
+    const found = new Set();
+    for (let i = 0; i < rgb.length; i += 3) found.add((rgb[i] << 16) | (rgb[i + 1] << 8) | rgb[i + 2]);
+    return found;
+  };
+  const dark = await makeRenderer(bytes);
+  const light = await makeRenderer(bytes);
+  assert.ok(light.canSetTheme);
+  const idle = colors(light(control({ focused: true, background, light: true }), 60));
+  assert.ok(idle.has(background) && idle.has(0x39404a) && !idle.has(0xeef6ff));
+  const busy = colors(light(control({ active: 2, done: 3, focused: true, background, light: true }), 200));
+  assert.ok(busy.has(0x94c6ff) && busy.has(0x83eeac) && !busy.has(0x3981f6) && !busy.has(0x20c65a));
+  const request = colors(light(control({ active: 1, blocked: 1, focused: true, background, light: true }), 200));
+  assert.ok([...request].some((c) => c >> 16 === 0xff && ((c >> 8) & 255) > 0xd0) && !request.has(0xffcb00));
+  // Dark stays as it was, and switching back restores it.
+  const darkIdle = colors(dark(control({ focused: true, background: 0x101114 }), 60));
+  assert.ok(darkIdle.has(0xeef6ff) && !darkIdle.has(0x39404a));
+  const back = colors(light(control({ focused: true, background: 0x101114 }), 60));
+  assert.ok(back.has(0xeef6ff) && !back.has(0x39404a));
 });
 
 test("live sidebar renderer matches the site framebuffer through count and attention changes", async () => {

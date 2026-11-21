@@ -15,6 +15,7 @@
 #include "../firmware/avatar_director.h"
 #include "../firmware/task_cues.h"
 #include "../firmware/request_scene.h"
+#include "../firmware/avatar_palette.h"
 
 namespace {
 constexpr int W=240,H=135;
@@ -73,20 +74,21 @@ template<typename Background>
 void label(Canvas& canvas,int count,const count_raster::Font& font,float cx,float cy,Background background,
            const count_pop::Pop& pop,uint32_t now,count_raster::Cache& cache,
            const avatar_interaction::CounterSpring& spring,float alpha=1,float shakeX=0,float shakeY=0,
-           const avatar_scene::Mask* stepping=nullptr) {
+           const avatar_scene::Mask* stepping=nullptr,uint16_t ink=0) {
  if(count<=0||alpha<=0)return;
  char text[10];roman_counts::format(count,text);
  cy+=pop.lift(now);
  cache.render(font,text,cx,cy,[&](int x,int y,float a,bool outline) {
   // A stepping foot covers the numeral instead of the label floating above it.
   const float covered=stepping?stepping->stepCoverage(x,y):0;
-  canvas.ink(x,y,outline?background(x,y):0,a*alpha*(1-covered));
+  canvas.ink(x,y,outline?background(x,y):ink,a*alpha*(1-covered));
  },spring.x+shakeX,spring.y+shakeY);
 }
 struct Preview {
  eye_acting::State state;
  int index,mode,done=2,active=3,shownDone=2,shownActive=3;
  bool healthy=true;
+ bool light=false;  // Light theme (avatar_palette); the site never sets it.
  avatar_scene::Scene scene;
  counter_space::State counterSpace;
  counter_labels::State counterLabels;
@@ -311,7 +313,7 @@ struct Preview {
   if(!eyeSize.primed)eyeSize.reset(scene.eyeWidth,scene.eyeHeight);
   eyeSize.step(dt,50*scene.eyes.width,height);
   scene.eyeWidth=eyeSize.width;scene.eyeHeight=eyeSize.height;
-  transfer.animate(ms,dt,120+scene.offset+scene.counterShift,rgb(34,197,94));
+  transfer.animate(ms,dt,120+scene.offset+scene.counterShift,avatar_palette::get(light).done);
   float dodgeRoom=task_cues::Arrival::kDodge;
   if(arrival.busy(ms)) {
    // Same fall column as the drawn drop: clear it, not just a fixed 20px.
@@ -367,10 +369,12 @@ struct Preview {
       status_sides::kActive);
  }
  void render(bool ppm,uint32_t darkRgb=0) {
-  const uint16_t dark=rgb((darkRgb>>16)&255,(darkRgb>>8)&255,darkRgb&255);
+  const avatar_palette::Palette& colors=avatar_palette::get(light);
+  // A host color (the Herdr sidebar) replaces the palette's body color.
+  const uint16_t dark=darkRgb?rgb((darkRgb>>16)&255,(darkRgb>>8)&255,darkRgb&255):colors.body;
   const int done=shownDone,active=shownActive;
   Canvas canvas;
-  const uint16_t green=rgb(34,197,94),blue=rgb(59,130,246),coral=rgb(247,118,142),eye=rgb(236,244,255);
+  const uint16_t green=colors.done,blue=colors.working,coral=colors.blocked,eye=colors.eye,ink=colors.ink;
   const uint16_t activeFill=blend(mode==19?blend(blue,coral,scene.alert):scene.alert?coral:blue,
                                   task_cues::kEnergy,transfer.glow(previous));
   const bool portrait=scene.alert && !(done&&active);
@@ -378,7 +382,8 @@ struct Preview {
                                                  backgroundDeparture.presence[0],backgroundDeparture.presence[1],
                                                  portrait?(mode==19?scene.alert:1.0f):0.0f,
                                                  transfer.washTint,transfer.washValue,
-                                                 request_scene::field(previous),scene.alert};
+                                                 request_scene::field(previous,colors.request,colors.requestPeak),
+                                                 scene.alert,light?dark:static_cast<uint16_t>(0)};
   backgroundCache.update(backgroundState,[&](int x,int y,uint16_t color){backdrop[y][x]=color;});
   const auto background=[&](int x,int y) {
    const uint16_t color=x>=0&&x<W?backdrop[y&3][x]:static_cast<uint16_t>(0);
@@ -386,7 +391,7 @@ struct Preview {
   };
   for(int y=0;y<H;++y)for(int x=0;x<W;++x)canvas.pixels[y*W+x]=background(x,y);
   // The `!` sits in the request field; the rising head may pass in front.
-  if(scene.alert>0)request_scene::sign(previous,[&](int x,int y,float a){canvas.ink(x,y,0,a*scene.alert);});
+  if(scene.alert>0)request_scene::sign(previous,[&](int x,int y,float a){canvas.ink(x,y,ink,a*scene.alert);});
   const float doneX=counterX(0),activeX=counterX(1),cy=counterY();
   avatar_scene::Mask mask;avatar_scene::buildMask(scene,mask);
   mask.raster([&](int x,int y,int length) {
@@ -407,25 +412,26 @@ struct Preview {
                     [&](int x,int y,float a){canvas.ink(x,y,green,a*shown);});
   const auto light=[&](int x,int y,float a){canvas.ink(x,y,task_cues::kFlash,a);};
   label(canvas,done,doneFont,doneX+doneFlight.x,cy+doneFlight.y,background,donePop,previous,doneRaster,doneSpring,
-        transfer.labelAlpha(previous,true)*shown,0,0,mask.stepSide?&mask:nullptr);
+        transfer.labelAlpha(previous,true)*shown,0,0,mask.stepSide?&mask:nullptr,ink);
   if(arrival.busy(previous)) {
    // Resting layout font for the new label; keep extensions in one font.
    const auto& fromFont=&fontFor(arrival.from)==&fontFor(arrival.to)?activeFont:fontFor(arrival.from);
    arrival.draw(previous,fromFont,activeFont,activeX+activeFlight.x,cy+activeFlight.y,
        [&](const count_raster::Font& font,const char* text,float x,float y,bool flying) {
     (flying?flyRaster:activeRaster).render(font,text,x,y,[&](int px,int py,float a,bool outline) {
-     canvas.ink(px,py,outline?background(px,py):0,a);
+     canvas.ink(px,py,outline?background(px,py):ink,a);
     });
    },light);
   } else {
    label(canvas,active,activeFont,activeX+activeFlight.x,cy+activeFlight.y,background,activePop,previous,activeRaster,
-         activeSpring,transfer.labelAlpha(previous,false)*shown,transfer.shakeX(previous),transfer.shakeY(previous));
+         activeSpring,transfer.labelAlpha(previous,false)*shown,transfer.shakeX(previous),transfer.shakeY(previous),
+         nullptr,ink);
   }
   transfer.crackles(previous,light);
   transfer.flip(previous,doneFont,doneX,cy,
       [&](const count_raster::Font& font,const char* text,float x,float y,float scale,float alpha) {
    count_raster::renderScaled(font,text,x,y,scale,[&](int px,int py,float a,bool outline) {
-    canvas.ink(px,py,outline?background(px,py):0,a*alpha);
+    canvas.ink(px,py,outline?background(px,py):ink,a*alpha);
    });
   },light);
   transfer.burst(previous,[&](int x,int y,int n){for(int i=0;i<n;++i)canvas.ink(x+i,y,task_cues::kFlash);},

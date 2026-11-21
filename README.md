@@ -12,6 +12,9 @@ Live demo with the real firmware renderer compiled to WebAssembly:
 - **Front key:** short press opens the next unread or waiting task; hold to dictate
   into your agent with local, CPU-only speech recognition. While you talk, the eyes
   become a soundwave that follows your voice.
+- **Side key (B):** short press switches between dark mode and light mode (white
+  face, dark gray eyes, paler blue/green/yellow). The Stick remembers your choice.
+  To start in light mode, build with `-DSTICK_S3_LIGHT_MODE=1`.
 - Idle, it naps. Turned over, the IMU flips the face upright.
 
 ## Layout

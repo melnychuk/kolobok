@@ -18,7 +18,7 @@ const MAX_WIDTH = SOURCE_W / 2;
 const FRAME_MS = 33; // Same simulation step as the site.
 const LEASE_MS = 5000;
 
-/** @typedef {{active: number, blocked: number, done: number, focused: boolean, background: number, width: number}} Input */
+/** @typedef {{active: number, blocked: number, done: number, focused: boolean, background: number, light: boolean, width: number}} Input */
 /** @param {BufferSource} bytes */
 export async function makeRenderer(bytes) {
   let memory = /** @type {WebAssembly.Memory | undefined} */ (undefined);
@@ -41,12 +41,19 @@ export async function makeRenderer(bytes) {
   const e = /** @type {{memory: WebAssembly.Memory, _initialize?: () => void,
     stick_init: () => void, stick_keep_awake: () => void, stick_frame: (...args: number[]) => void,
     stick_frame_ptr: () => number, stick_backdrop_ptr?: () => number,
-    stick_set_display?: (dither: number, alphaLevels: number) => void}} */ (/** @type {unknown} */ (wasm.instance.exports));
+    stick_set_display?: (dither: number, alphaLevels: number) => void,
+    stick_set_theme?: (light: number) => void}} */ (/** @type {unknown} */ (wasm.instance.exports));
   memory = e.memory;
   e._initialize?.();
   e.stick_init();
   let clock = 0;
+  let light = false;
   const frame = (/** @type {Input} */ input, steps = 1) => {
+    // Light mode follows the host theme; an older avatar.wasm stays dark.
+    if (input.light !== light) {
+      light = input.light === true;
+      e.stick_set_theme?.(light ? 1 : 0);
+    }
     for (let i = 0; i < steps; i++) {
       clock += FRAME_MS;
       if (input.focused) e.stick_keep_awake();
@@ -57,6 +64,8 @@ export async function makeRenderer(bytes) {
   return Object.assign(frame, {
     /** False when this avatar.wasm predates the widget display options. */
     canSetDisplay: typeof e.stick_set_display === "function",
+    /** False when this avatar.wasm predates light mode. */
+    canSetTheme: typeof e.stick_set_theme === "function",
     /** Widget display options for following frames; see avatar_wasm.cpp. */
     setDisplay(dither = true, alphaLevels = 0) {
       e.stick_set_display?.(dither ? 1 : 0, alphaLevels);
@@ -77,6 +86,7 @@ export function control(input) {
     focused: input.focused === true,
     background: typeof input.background === "number" && Number.isInteger(input.background) &&
       input.background >= 0 && input.background <= 0xffffff ? input.background : 0,
+    light: input.light === true,
     width: Number.isInteger(input.width) ? Math.min(MAX_WIDTH, Math.max(2, input.width ?? MAX_WIDTH)) : MAX_WIDTH,
   };
 }
@@ -160,7 +170,9 @@ export function packFrame(rgb, width, background, quantize = 1, rows = null) {
 // Keep the solid status fills, eyes and numeral ink. In busy shots the LCD's
 // dither can make thousands of tiny shapes. Stay within Herdr's per-render JS
 // budget with a smaller sampling grid and a reduced edge/dither palette.
-const EXACT_COLORS = new Set([0, 0x3981f6, 0xeef6ff, 0x20c65a, 0xf6758b, 0xffcb00]);
+const EXACT_COLORS = new Set([0, 0x3981f6, 0xeef6ff, 0x20c65a, 0xf6758b, 0xffcb00,
+  // Light mode: eyes and ink, working, done, needs-you, request.
+  0x39404a, 0x94c6ff, 0x83eeac, 0xffa5ac, 0xfff28b]);
 
 /** @param {number} rgb @returns {`#${string}`} */
 const css = (rgb) => `#${rgb.toString(16).padStart(6, "0")}`;

@@ -73,6 +73,12 @@ __attribute__((export_name("stick_set_display"))) void stick_set_display(int dit
  if(cache.dither!=(dither!=0)) { cache.dither=dither!=0;cache.valid=false; }
  display::alphaLevels=alphaLevels<0?0:alphaLevels>16?16:alphaLevels;
 }
+// Desktop widget theme: 1 = light (dark gray eyes and ink, paler status
+// colors), 0 = dark. The site never calls this. Takes effect on the next frame.
+__attribute__((export_name("stick_set_theme"))) void stick_set_theme(int light) {
+ if(!avatar)stick_init();
+ avatar->preview.light=light!=0;
+}
 // ms must be monotonic. blocked<=active ("needs you" is a subset of active work).
 __attribute__((export_name("stick_frame")))
 void stick_frame(uint32_t ms,int active,int blocked,int done,int listening,int healthy,uint32_t background) {

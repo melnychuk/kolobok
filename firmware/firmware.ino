@@ -1,4 +1,5 @@
 #include <M5Unified.h>
+#include <Preferences.h>
 #include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <math.h>
@@ -19,6 +20,7 @@
 #include "avatar_director.h"
 #include "task_cues.h"
 #include "request_scene.h"
+#include "avatar_palette.h"
 #include "usb_presence.h"
 #include "power_nap.h"
 #include "frame_profile.h"
@@ -36,6 +38,11 @@
 #ifndef STICK_S3_AMBIENT_STARTLE
 #define STICK_S3_AMBIENT_STARTLE 0
 #endif
+// Theme on first boot (0 dark, 1 light). A short click on the side button
+// switches it afterwards and the choice is kept across restarts.
+#ifndef STICK_S3_LIGHT_MODE
+#define STICK_S3_LIGHT_MODE 0
+#endif
 
 namespace {
 
@@ -52,11 +59,14 @@ constexpr int kCountSideWidth = 48;  // Minimum exposed background beside the fa
 constexpr int kCountPadding = 16;
 
 constexpr uint16_t kBlack = 0x0000;
-constexpr uint16_t kEye = rgb565(236, 244, 255);
-// Distinct, saturated status colors. Needs-input uses the task list's red.
-constexpr uint16_t kWorking = rgb565(0x3B, 0x82, 0xF6);
-constexpr uint16_t kBlocked = rgb565(0xF7, 0x76, 0x8E);
-constexpr uint16_t kDone = rgb565(0x22, 0xC5, 0x5E);
+
+using avatar_palette::Palette;
+bool lightMode = STICK_S3_LIGHT_MODE != 0;
+const Palette* palette = &avatar_palette::get(lightMode);
+Preferences settings;
+bool settingsOpen = false;
+bool themePressArmed = false;
+uint32_t napEndedAt = 0;
 
 int activeCount = 0;
 int attentionCount = 0;
@@ -624,7 +634,7 @@ void updateLayout(float seconds, uint32_t now) {
   const float countY = counterY();
   // Leave/re-enter and dodge translate the whole character; zero is exact.
   taskTransfer.source(now, activeX, countY);
-  taskTransfer.animate(now, seconds, 120 + ui.offset + scene.counterShift, kDone);
+  taskTransfer.animate(now, seconds, 120 + ui.offset + scene.counterShift, palette->done);
   // Clear the falling numeral's column: the wide paired face needs far more
   // than the authored 20px, while the outer eye stays on screen.
   float dodgeRoom = task_cues::Arrival::kDodge;
@@ -657,13 +667,14 @@ status_background::SortingDeparture backgroundDeparture;
 
 status_background::State statusBackgroundState(uint32_t now) {
   // A charging completion pulses energetic green light through the blue.
-  const uint16_t activeFill=blend565(blend565(kWorking,kBlocked,ui.waiting),task_cues::kEnergy,
+  const Palette& colors=*palette;
+  const uint16_t activeFill=blend565(blend565(colors.working,colors.blocked,ui.waiting),task_cues::kEnergy,
                                      taskTransfer.glow(now));
   const bool portrait=ui.alert>.01f && !(doneCount>0 && activeCount>0);
-  return {kDone,activeFill,doneCount>0?kDone:activeFill,
+  return {colors.done,activeFill,doneCount>0?colors.done:activeFill,
           backgroundDeparture.presence[0],backgroundDeparture.presence[1],portrait?ui.alert:0,
           taskTransfer.washTint,taskTransfer.washValue,
-          request_scene::field(now),ui.alert};
+          request_scene::field(now,colors.request,colors.requestPeak),ui.alert,colors.body};
 }
 
 uint16_t statusBackgroundAt(int x,int y) {
@@ -700,7 +711,7 @@ void drawBadge(Badge& badge, int slot, uint32_t now) {
   char label[10];
   roman_counts::format(badge.shown, label);
   if(done&&!countCueBusy(now))director.accents(now,centerX,centerY-font.capHeight/2-2,
-      [&](int x,int y,float a){inkFrame(x,y,kDone,a*alpha);});  // alpha includes the request fade
+      [&](int x,int y,float a){inkFrame(x,y,palette->done,a*alpha);});  // alpha includes the request fade
   // Restore the exact status background in the outline, including its gradient.
   // It is a backdrop to SOLID black letters, not a white border or hollow font.
   // Draw last so freely flapping face edges may overlap without hiding counts.
@@ -712,7 +723,7 @@ void drawBadge(Badge& badge, int slot, uint32_t now) {
         [&](const count_raster::Font& f,const char* text,float x,float y,bool flying) {
       (flying?flyingRaster:badge.raster).render(f,text,x,y,[&](int px,int py,float coverage,bool outline) {
         if(px<0||px>=kScreenWidth||py<0||py>=kScreenHeight)return;
-        inkFrame(px,py,outline?statusBackgroundAt(px,py):kBlack,settled*coverage);
+        inkFrame(px,py,outline?statusBackgroundAt(px,py):palette->ink,settled*coverage);
       });
     },[&](int x,int y,float a){
       if(x>=0&&x<kScreenWidth&&y>=0&&y<kScreenHeight)inkFrame(x,y,task_cues::kFlash,a);
@@ -726,7 +737,7 @@ void drawBadge(Badge& badge, int slot, uint32_t now) {
   badge.raster.render(font,label,centerX,centerY,[&](int x,int y,float coverage,bool outline) {
     if(x<0||x>=kScreenWidth||y<0||y>=kScreenHeight)return;
     const float uncovered = stepped ? 1 - faceMask.stepCoverage(x,y) : 1;
-    inkFrame(x,y,outline?statusBackgroundAt(x,y):kBlack,alpha*coverage*uncovered);
+    inkFrame(x,y,outline?statusBackgroundAt(x,y):palette->ink,alpha*coverage*uncovered);
   },badge.spring.x+shakeX,badge.spring.y+shakeY);  // Slow contact springs move sub-pixel.
 }
 
@@ -742,7 +753,7 @@ void drawTaskCues(uint32_t now) {
       [&](const count_raster::Font& f,const char* text,float x,float y,float scale,float a) {
     count_raster::renderScaled(f,text,x,y,scale,[&](int px,int py,float coverage,bool outline) {
       if(px<0||px>=kScreenWidth||py<0||py>=kScreenHeight)return;
-      inkFrame(px,py,outline?statusBackgroundAt(px,py):kBlack,a*coverage);
+      inkFrame(px,py,outline?statusBackgroundAt(px,py):palette->ink,a*coverage);
     });
   },light);
   const uint16_t stored=framePixels.swapped?framebuffer_raster::swap(task_cues::kFlash):task_cues::kFlash;
@@ -774,12 +785,17 @@ void drawIndicators(uint32_t now) {
 void drawFaceBackground() {
   // Skip whole opaque blocks while preserving individual travelling flaps
   // and exact fractional edge coverage. Counts still render above the face.
+  const uint16_t body=palette->body;
+  const uint16_t stored=framePixels.swapped?framebuffer_raster::swap(body):body;
   faceMask.raster([&](int x,int y,int length) {
-    // Black is 0 in either byte order: clear the opaque run in place.
-    if(framePixels.pixels)memset(framePixels.pixels+y*framePixels.stride+x,0,length*sizeof(uint16_t));
-    else frame().drawFastHLine(x,y,length,kBlack);
+    if(framePixels.pixels) {
+      uint16_t* row=framePixels.pixels+y*framePixels.stride+x;
+      // Black is 0 in either byte order: clear the opaque run in place.
+      if(body==kBlack)memset(row,0,length*sizeof(uint16_t));
+      else for(int i=0;i<length;++i)row[i]=stored;
+    } else frame().drawFastHLine(x,y,length,body);
   },[&](int x,int y,float alpha) {
-    inkFrame(x,y,kBlack,alpha);
+    inkFrame(x,y,body,alpha);
   });
 }
 
@@ -843,7 +859,7 @@ void renderFrame(uint32_t now) {
   // The request `!` sits in the pulsing field; the rising head may cover it.
   if (ui.alert > .01f) {
     request_scene::sign(now,[&](int x,int y,float alpha) {
-      if(x>=0 && x<kScreenWidth && y>=0 && y<kScreenHeight) inkFrame(x,y,kBlack,alpha*ui.alert);
+      if(x>=0 && x<kScreenWidth && y>=0 && y<kScreenHeight) inkFrame(x,y,palette->ink,alpha*ui.alert);
     });
   }
   STICK_PROFILE_MARK(background);
@@ -854,20 +870,21 @@ void renderFrame(uint32_t now) {
   drawFaceBackground();
   STICK_PROFILE_MARK(face);
   // Opaque interior eye runs are filled directly; AA edges stay per-pixel.
+  const uint16_t eye=palette->eye;
   avatar_scene::eyes(scene,faceMask,[&](int x,int y,float alpha) {
-    inkFrame(x,y,kEye,alpha);
+    inkFrame(x,y,eye,alpha);
   },[&](int x,int y,int length) {
     if(framePixels.pixels) {
       uint16_t* row=framePixels.pixels+y*framePixels.stride+x;
-      const uint16_t stored=framePixels.swapped?framebuffer_raster::swap(kEye):kEye;
+      const uint16_t stored=framePixels.swapped?framebuffer_raster::swap(eye):eye;
       for(int i=0;i<length;++i)row[i]=stored;
     } else {
-      frame().drawFastHLine(x,y,length,kEye);
+      frame().drawFastHLine(x,y,length,eye);
     }
   });
   STICK_PROFILE_MARK(eyes);
   avatar_scene::mouth(scene,faceMask,[&](int x,int y,float alpha) {
-    inkFrame(x,y,kEye,alpha);
+    inkFrame(x,y,eye,alpha);
   });
   STICK_PROFILE_MARK(mouth);
   STICK_PROFILE_MARK(attention);
@@ -904,6 +921,21 @@ void updateAttentionChime() {
   } else {
     attentionChimePlaying = false;
   }
+}
+
+void setTheme(bool light) {
+  lightMode = light;
+  palette = &avatar_palette::get(light);
+}
+
+// Side button B: a short click switches dark/light mode and remembers it.
+// A press that wakes the Stick from its battery nap only wakes it.
+void updateTheme(uint32_t now) {
+  if (M5.BtnB.wasPressed()) themePressArmed = now - napEndedAt > 400;
+  if (!M5.BtnB.wasClicked() || !themePressArmed) return;
+  themePressArmed = false;
+  setTheme(!lightMode);
+  if (settingsOpen) settings.putBool("light", lightMode);
 }
 
 bool completionPairingReady(int nextAttentionCount) {
@@ -1078,6 +1110,8 @@ void leaveNap() {
   M5.Display.wakeup();
   M5.Speaker.begin();
   lastImuAt = 0;  // Do not integrate gyro rate across the nap.
+  napEndedAt = millis();
+  themePressArmed = false;
 }
 
 // Light-sleeps until a button or the poll timer; true when a button woke it.
@@ -1133,7 +1167,9 @@ void setup() {
   M5.Speaker.setVolume(128);
   M5.Display.setRotation(rotation);
   M5.Display.setBrightness(kAwakeBrightness);
-  M5.Display.fillScreen(kBlack);
+  settingsOpen = settings.begin("stick-s3", false);
+  setTheme(settingsOpen ? settings.getBool("light", STICK_S3_LIGHT_MODE != 0) : STICK_S3_LIGHT_MODE != 0);
+  M5.Display.fillScreen(palette->body);
   eyeLife.seed = esp_random() | 1u;  // xorshift state must be nonzero.
   eyeLife.microSeed = esp_random() | 1u;
   counterChecks.seed = esp_random() | 1u;
@@ -1197,6 +1233,7 @@ void loop() {
   if (updateNap(millis())) return;
 
   updateVoice();
+  updateTheme(millis());
   updateOrientation();
   updateAmbient(millis());  // Before the chime: it hands the codec back to the speaker.
   if (!voiceRecording) updateAttentionChime();

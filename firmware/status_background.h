@@ -25,7 +25,8 @@ inline uint16_t color(int x,int y,uint16_t done,uint16_t active,
                       float donePresence,float activePresence,
                       uint16_t portrait=0,float portraitPresence=0,
                       uint16_t wash=0,float washPresence=0,
-                      uint16_t alert=0,float alertPresence=0,bool dither=true) {
+                      uint16_t alert=0,float alertPresence=0,bool dither=true,
+                      uint16_t base=0) {
  donePresence=clamp(donePresence);activePresence=clamp(activePresence);
  portraitPresence=clamp(portraitPresence);washPresence=clamp(washPresence);
  alertPresence=clamp(alertPresence);
@@ -38,9 +39,12 @@ inline uint16_t color(int x,int y,uint16_t done,uint16_t active,
  const int shifts[]={11,5,0},masks[]={31,63,31};
  int result[3]={};
  for(int c=0;c<3;++c) {
-  const float background=channel(portrait,shifts[c],masks[c])*portraitPresence;
-  const float completed=donePresence>=.01f?channel(done,shifts[c],masks[c])*donePresence:background;
-  const float working=activePresence>=.01f?channel(active,shifts[c],masks[c])*activePresence:background;
+  // Absent colors fade toward `base` (the face color: black, or light mode's
+  // white). A zero base is bit-identical to fading toward black.
+  const float empty=channel(base,shifts[c],masks[c]);
+  const float background=empty+(channel(portrait,shifts[c],masks[c])-empty)*portraitPresence;
+  const float completed=donePresence>=.01f?empty+(channel(done,shifts[c],masks[c])-empty)*donePresence:background;
+  const float working=activePresence>=.01f?empty+(channel(active,shifts[c],masks[c])-empty)*activePresence:background;
   const float left=status_sides::kDone<0?completed:working;
   const float right=status_sides::kDone<0?working:completed;
   const float split=x<120?left:right;
@@ -58,7 +62,7 @@ inline uint16_t color(int x,int y,uint16_t done,uint16_t active,
 }
 // Every dependency of color(), including transition/portrait inputs. Exact
 // equality only: never freeze a nearly-settled fade or reuse an old coral row.
-// Trailing wash fields are value-initialized by the older six-value initializers.
+// Trailing wash/alert/base fields are value-initialized by shorter initializers.
 struct State {
  uint16_t done,active,portrait;
  float donePresence,activePresence,portraitPresence;
@@ -66,12 +70,13 @@ struct State {
  float washPresence;
  uint16_t alert;
  float alertPresence;
+ uint16_t base;  // Field color where no status shows (0 = black).
  bool operator==(const State& other) const {
   return done==other.done && active==other.active && portrait==other.portrait &&
          donePresence==other.donePresence && activePresence==other.activePresence &&
          portraitPresence==other.portraitPresence && wash==other.wash &&
          washPresence==other.washPresence && alert==other.alert &&
-         alertPresence==other.alertPresence;
+         alertPresence==other.alertPresence && base==other.base;
  }
 };
 // A sorting numeral may become zero at the apex, before the wide face reflows.
@@ -101,7 +106,7 @@ struct SortingDeparture {
  }
 };
 struct RowCache {
- State previous={0,0,0,0,0,0,0,0,0,0};
+ State previous={0,0,0,0,0,0,0,0,0,0,0};
  bool valid=false;
  bool dither=true;  // The device always dithers; see color().
  template<class Pixel>
@@ -110,7 +115,7 @@ struct RowCache {
   for(int y=0;y<4;++y)for(int x=0;x<240;++x)
    pixel(x,y,color(x,y,state.done,state.active,state.donePresence,state.activePresence,
                    state.portrait,state.portraitPresence,state.wash,state.washPresence,
-                   state.alert,state.alertPresence,dither));
+                   state.alert,state.alertPresence,dither,state.base));
   previous=state;valid=true;return true;
  }
 };

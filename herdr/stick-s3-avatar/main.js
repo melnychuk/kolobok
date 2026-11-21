@@ -19,6 +19,12 @@ function avatarBlock(node) {
   return undefined;
 }
 
+/** Relative luminance (WCAG) of a 0xRRGGBB color, 0 black .. 1 white. @param {number} rgb */
+function luminance(rgb) {
+  const linear = (/** @type {number} */ c) => (c /= 255) <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  return 0.2126 * linear((rgb >> 16) & 255) + 0.7152 * linear((rgb >> 8) & 255) + 0.0722 * linear(rgb & 255);
+}
+
 /** @typedef {[`#${string}`, [number, number, number, number][]]} Ink */
 /** @typedef {[number, number, number, Ink[], `#${string}`[]?]} Frame */
 /** @typedef {Awaited<ReturnType<typeof connect>>} Socket */
@@ -204,11 +210,13 @@ export default class StickAvatar extends View {
     const color = t.chrome ?? "#000000";
     const outline = /** @type {`#${string}`} */ (t.border ?? "#383c40");
     const background = /^#[0-9a-f]{6}$/i.test(color) ? Number.parseInt(color.slice(1), 16) : 0;
+    // A light sidebar gets the Stick's light mode: dark gray eyes, paler statuses.
+    const light = luminance(background) > 0.5;
     const width = Math.max(2, Math.min(MAX_WIDTH, Math.floor(this.width) - 8));
     const height = width * 9 / 16;
     const radius = Math.min(5, height / 2);
     const focused = herdrWindow()?.active ?? false;
-    const input = JSON.stringify({ active: working + blocked, blocked, done, focused, background, width });
+    const input = JSON.stringify({ active: working + blocked, blocked, done, focused, background, light, width });
     this.input = input;
     this.shape = [width, background];
     if (this.connected !== false) return div().size_full();
