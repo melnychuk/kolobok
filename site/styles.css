@@ -61,6 +61,21 @@ body::after {
   transition: background 1.2s;
 }
 .canvas-host { position: absolute; inset: 0; opacity: 0; transition: opacity .7s ease-out; }
+/* Herdr chapter: real screenshots take the stick's place on the stage, at its
+   screen-space spot beside the copy (or above it on phones). js/main.js sets
+   --herdr (0..1) from the scroll; the stick, its status and glow (--stick)
+   fade out first. */
+.stage-shot {
+  position: absolute; left: 69%; top: 50%; margin: 0; width: min(46vw, 720px);
+  translate: -50% calc(-50% + (1 - var(--herdr, 0)) * 28px); scale: calc(.96 + .04 * var(--herdr, 0));
+  opacity: var(--herdr, 0); visibility: hidden; pointer-events: none;
+}
+.stage.herdr .stage-shot { visibility: visible; }
+.stage-shot img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid #ffffff26; box-shadow: 0 40px 80px -30px #000, 0 0 0 1px #0006; }
+.stage-shot[data-theme=light] .hs-dark, .stage-shot[data-theme=dark] .hs-light { display: none; }
+.canvas-host canvas, .stage.flat #flat-screen { opacity: var(--stick, 1); }
+.stage .now { opacity: var(--stick, 1); }
+.stage.herdr .glow { opacity: calc(.55 * var(--stick, 1)); }
 .stage.ready .canvas-host { opacity: 1; }
 .canvas-host canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; }
 .canvas-host canvas.can-rotate { cursor: grab; }
@@ -193,12 +208,6 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 .stage.intro .now, .stage.intro .dots { opacity: 0; pointer-events: none; }
 .stage.intro .glow { opacity: 0; }
 
-/* Herdr chapter: real screenshots (scripts/capture-herdr-shot.py), one per
-   theme; the switch shows one and gives the stick the matching face. */
-.herdr-shot { display: grid; gap: 10px; margin: 4px 0 12px; }
-.herdr-shot img { display: block; width: 100%; max-width: 300px; height: auto; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 18px 40px -24px #000; }
-.herdr-shot[data-theme=light] .hs-dark, .herdr-shot[data-theme=dark] .hs-light { display: none; }
-.herdr-shot .segmented { max-width: 300px; }
 .specs { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
 .specs li { padding: 10px 14px; border-radius: 14px; background: #0b1f3acc; border: 1px solid #9fd2ff33; color: #c7d8f0; font-size: 15px; }
 .specs b { color: var(--sky); margin-right: 4px; }
@@ -354,10 +363,9 @@ footer p { margin: 0; }
   .card.panel { padding: 16px; }
   .card.panel h2 { font-size: 26px; margin: 8px 0 4px; }
   .card.panel > .tiny { margin-bottom: 0; }
-  /* Herdr shot beside its theme switch, so the stick stays in view. */
-  .herdr-shot { grid-template-columns: minmax(0, 128px) 1fr; align-items: center; margin-bottom: 8px; }
-  .herdr-shot img { border-radius: 8px; }
-  .herdr-shot .segmented { flex-direction: column; flex-basis: auto; }
+  /* Above the copy, where the stick sits on phones. */
+  .stage-shot { left: 50%; top: 30%; width: min(92vw, 460px); }
+  .stage-shot img { border-radius: 10px; }
   /* Playground: one group of controls at a time, picked from .pg-tabs; each
      pane gets the same height so the panel never jumps under the stick. */
   .segmented.pg-tabs { display: flex; margin-top: 12px; }

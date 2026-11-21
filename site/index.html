@@ -66,6 +66,12 @@
         <div id="canvas-host" class="canvas-host">
           <canvas id="flat-screen" width="240" height="135" aria-hidden="true"></canvas>
         </div>
+        <!-- The Herdr chapter swaps the stick for real screenshots (js/main.js
+             fades them by scroll; scripts/capture-herdr-shot.py makes them). -->
+        <figure class="stage-shot" data-theme="light">
+          <img class="hs-light" src="media/herdr-light.webp" width="1400" height="863" loading="lazy" alt="Herdr Desktop in a light theme: the Stick avatar sits above Agents, light-faced, while Copilot CLI works in the acme-api space">
+          <img class="hs-dark" src="media/herdr-dark.webp" width="1400" height="863" loading="lazy" alt="The same Herdr Desktop window in a dark theme, with the Stick avatar's dark face">
+        </figure>
         <div class="loading" aria-hidden="true"><span></span><span></span></div>
         <script type="module" src="js/intro.js"></script>
         <p id="stage-error" class="stage-error" role="alert"></p>
@@ -181,24 +187,7 @@
           </div>
         </section>
 
-        <section class="chapter left" id="herdr" data-chapter="herdr">
-          <div class="card">
-            <span class="kicker k-blue">Herdr Desktop</span>
-            <h2>Stick at home? I’m still here.</h2>
-            <p>Unplug me and I move into Herdr Desktop’s sidebar, right above Agents. Same face, same counts, drawn by the same renderer. Plug me back in and I step aside.</p>
-            <div class="herdr-shot" data-theme="light">
-              <img class="hs-light" src="media/herdr-light.webp" width="900" height="801" loading="lazy" alt="Herdr Desktop in a light theme: the Stick avatar sits above Agents, light-faced, while Copilot CLI works in the acme-api space">
-              <img class="hs-dark" src="media/herdr-dark.webp" width="900" height="801" loading="lazy" alt="The same Herdr Desktop window in a dark theme, with the Stick avatar's dark face">
-              <div class="segmented hm-theme" role="tablist" aria-label="Herdr theme">
-                <button role="tab" data-theme="light" aria-selected="true">Light theme</button>
-                <button role="tab" data-theme="dark" aria-selected="false">Dark theme</button>
-              </div>
-            </div>
-            <p class="tiny">A light Herdr theme gets my light face. <a href="#setup">Install the widget</a>. No Stick yet? <a href="https://shop.m5stack.com/products/m5sticks3-esp32s3-mini-iot-dev-kit" target="_blank" rel="noopener">Get an M5StickS3 from M5Stack</a>.</p>
-          </div>
-        </section>
-
-        <section class="chapter right play" id="play" data-chapter="play">
+        <section class="chapter right play chapter-flow" id="play" data-chapter="play">
           <div class="card panel playground">
             <span class="kicker k-yellow">Playground</span>
             <h2>Your turn. Poke me.</h2>
@@ -264,6 +253,19 @@
               <button class="switch" id="btn-light" aria-pressed="false" title="Light mode (side key)"><span class="knob" aria-hidden="true"></span>Light</button>
               <button class="switch" id="btn-sound" aria-pressed="true" title="Attention chime"><span class="knob" aria-hidden="true"></span>Chime</button>
             </div>
+          </div>
+        </section>
+
+        <section class="chapter left chapter-flow" id="herdr" data-chapter="herdr">
+          <div class="card">
+            <span class="kicker k-blue">Herdr Desktop</span>
+            <h2>Stick at home? I’m still here.</h2>
+            <p>Unplug me and I move into Herdr Desktop’s sidebar, right above Agents. Same face, same counts, drawn by the same renderer. Plug me back in and I step aside.</p>
+            <div class="segmented hm-theme" role="tablist" aria-label="Herdr theme">
+              <button role="tab" data-theme="light" aria-selected="true">Light theme</button>
+              <button role="tab" data-theme="dark" aria-selected="false">Dark theme</button>
+            </div>
+            <p class="tiny">A light Herdr theme gets my light face. <a href="#setup">Install the widget</a>. No Stick yet? <a href="https://shop.m5stack.com/products/m5sticks3-esp32s3-mini-iot-dev-kit" target="_blank" rel="noopener">Get an M5StickS3 from M5Stack</a>.</p>
           </div>
         </section>
       </div>

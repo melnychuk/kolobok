@@ -161,10 +161,9 @@ async function main() {
   voiceBtn.addEventListener("pointerleave", () => device.pressed && press(false));
 
   // --- Theme -----------------------------------------------------------------
-  // The playground's Light switch is the side key; the light chapter and the
-  // Herdr chapter borrow the face and hand it back on leaving.
+  // The playground's Light switch is the side key; the light chapter borrows
+  // the face and hands it back on leaving.
   let lightPinned = false;
-  let herdrLight = true;
   const lightBtn = $("#btn-light");
   lightBtn.onclick = () => {
     lightPinned = !lightPinned;
@@ -172,15 +171,12 @@ async function main() {
     avatar.setTheme(lightPinned);
     toast(lightPinned ? "Side key: light mode" : "Side key: dark mode");
   };
-  // Herdr chapter: the theme switch shows that screenshot and gives the
-  // stick the face Herdr would give it.
-  const shot = $(".herdr-shot");
-  let inHerdr = false;
-  $$(".hm-theme [role=tab]", shot).forEach((tab, _, tabs) => tab.addEventListener("click", () => {
-    herdrLight = tab.dataset.theme === "light";
+  // Herdr chapter: screenshots replace the stick on the stage (onScroll
+  // fades them); the switch picks the light or dark one.
+  const shot = $(".stage-shot");
+  $$("#herdr .hm-theme [role=tab]").forEach((tab, _, tabs) => tab.addEventListener("click", () => {
     shot.dataset.theme = tab.dataset.theme;
     tabs.forEach((t) => t.setAttribute("aria-selected", t === tab));
-    if (inHerdr) avatar.setTheme(herdrLight);
   }));
 
   // --- Chapters ------------------------------------------------------------
@@ -321,18 +317,12 @@ async function main() {
       },
       leave() { avatar.setTheme(lightPinned); },
     },
-    herdr: {
-      pose: { az: -22, el: 10, dist: 176, tx: 2, ty: 0, exposure: 1.05, reveal: 1 },
-      awake: true,
-      enter() {
-        // The screenshot's counts: two working, one unread done.
-        inHerdr = true;
-        avatar.setTheme(herdrLight);
-        calm({ active: 2, done: 1 });
-      },
-      leave() { inHerdr = false; avatar.setTheme(lightPinned); },
-    },
     play: {
+      pose: { az: 16, el: 10, dist: 180, tx: 0, ty: 0, exposure: 1.05, reveal: 1 },
+      enter() { calm({ active: 2, done: 1 }); },
+    },
+    herdr: {
+      // The stick steps aside for the screenshots (--herdr); hold its pose.
       pose: { az: 16, el: 10, dist: 180, tx: 0, ty: 0, exposure: 1.05, reveal: 1 },
       enter() { calm({ active: 2, done: 1 }); },
     },
@@ -462,13 +452,13 @@ async function main() {
   const OUT_WIDE = [0.04, 0.3]; // the wider opening copy clears out sooner
   const IN = 0.34, STAGGER = 0.045, FADE = 0.25; // new copy rises in after the stick has left
   const LIFT = 30; // px of copy travel, like Apple's short text moves
-  // The opening is its own scene; the interactive playground keeps flowing
-  // (it hands over to the rest of the page), entering once like Apple's
+  // The opening is its own scene; the playground and the closing Herdr
+  // chapter (.chapter-flow) keep flowing into the rest of the page, entering once like Apple's
   // StaggeredFadeIn (.entered in styles.css).
   const ENTER = 0.72;
   document.documentElement.classList.add("js-chapters");
   sections.forEach((s) => {
-    if (!s.classList.contains("scene") && s.dataset.chapter !== "play") s.classList.add("pinned");
+    if (!s.classList.contains("scene") && !s.classList.contains("chapter-flow")) s.classList.add("pinned");
     [...($(".card", s)?.children ?? [])].forEach((el, n) => el.style.setProperty("--i", n));
   });
   // x: continuous chapter position (n = resting on chapter n).
@@ -500,6 +490,7 @@ async function main() {
     card.style.pointerEvents = shown > 0.5 ? "auto" : "none";
   }
   const playground = $("#play");
+  const herdrAt = names.indexOf("herdr");
   function onScroll() {
     const mid = scrollY + innerHeight / 2;
     // Only hand over the camera once the visitor is in the playground, not
@@ -524,6 +515,13 @@ async function main() {
     // Copy is scrubbed directly, so the camera follows briskly to stay in step.
     device.setPose(pose, false, inScene ? 0.5 : 0.22);
     stage.classList.toggle("intro", pose.reveal < 0.5);
+    // The Herdr screenshots take over from the stick on the copy's timeline:
+    // the stick fades first, then the screenshot rises in (and the reverse).
+    const away = Math.abs(herdrAt - (i + t));
+    const herdr = 1 - span(away, IN - 0.05, IN + FADE + 0.05);
+    stage.style.setProperty("--herdr", herdr.toFixed(3));
+    stage.style.setProperty("--stick", span(away, IN + FADE, IN + FADE + 0.3).toFixed(3));
+    stage.classList.toggle("herdr", herdr > 0.001);
     // Pinned chapters crossfade on the timeline; the opening and the
     // playground flow, fading by distance from their chapter.
     sections.forEach((s, n) => {
