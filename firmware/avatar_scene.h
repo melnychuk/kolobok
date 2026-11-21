@@ -307,8 +307,10 @@ inline float unusedSideStretch(const Scene& scene) {
 inline float softSides(const Scene& scene) {
  return (1-scene.corners)*(1-scene.alert)*(1-.8f*scene.sleep)*scene.side;
 }
+// `soft` and `stretch` are softSides(scene) and unusedSideStretch(scene), the
+// same for every row.
 inline bool sideBounds(const Scene& scene,const Geometry& g,const fluid_face::Frame& fluid,
-                       int y,float& left,float& right) {
+                       float soft,float stretch,int y,float& left,float& right) {
  left=right=0;
  float ny=(y+.5f-g.cy)/g.ry;
  // The lower spring rim, not a rigid ellipse cap, decides which pixels exist
@@ -316,7 +318,6 @@ inline bool sideBounds(const Scene& scene,const Geometry& g,const fluid_face::Fr
  if(ny>.85f)ny=mix(ny,.85f,scene.corners);
  if(fabsf(ny)>=1)return false;
  float half=g.rx*profile(fabsf(ny),g.power);
- const float soft=softSides(scene);
  // A standing blob settles: narrower shoulders and a heavier lower belly,
  // so the side reads as a drop rather than a rigid parenthesis.
  if(soft!=0)half*=1+.11f*soft*(ny+.35f*(1-ny*ny)-.35f);
@@ -333,7 +334,6 @@ inline bool sideBounds(const Scene& scene,const Geometry& g,const fluid_face::Fr
   left+=soft*scene.surface->edgeSample(0,y+.5f);
   right+=soft*scene.surface->edgeSample(1,y+.5f);
  }
- const float stretch=unusedSideStretch(scene);
  if(stretch>0)right+=(right-g.cx)*stretch;
  else if(stretch<0)left+=(g.cx-left)*stretch;
  left=fmaxf(0,fminf(240,left));right=fmaxf(0,fminf(240,right));
@@ -342,7 +342,8 @@ inline bool sideBounds(const Scene& scene,const Geometry& g,const fluid_face::Fr
 // Compatibility/read handle for tests of the side envelope. The complete face
 // mask also includes the freely moving lower rim and may have multiple runs.
 inline bool bounds(const Scene& scene,int y,float& left,float& right) {
- return sideBounds(scene,geometry(scene),fluid_face::Frame(scene.flowClock),y,left,right);
+ return sideBounds(scene,geometry(scene),fluid_face::Frame(scene.flowClock),softSides(scene),
+                   unusedSideStretch(scene),y,left,right);
 }
 // Lower convex envelope of row samples, in O(rows), without a pixel loop.
 // A tangent bridge fills a hard circle/body union's inward crease. Subtract
@@ -496,9 +497,10 @@ inline void buildMask(const Scene& scene,Mask& mask) {
  const float stretch=unusedSideStretch(scene);
  // Soft sides may bulge past the rigid oval; keep the lower envelope out of
  // their way, or the two curves meet at a visible corner. Zero when paired.
- const float widen=1+.4f*softSides(scene);
+ const float soft=softSides(scene);
+ const float widen=1+.4f*soft;
  const fluid_face::Frame fluid(scene.flowClock);
- for(int y=0;y<135;++y)sideBounds(scene,g,fluid,y,mask.left[y],mask.right[y]);
+ for(int y=0;y<135;++y)sideBounds(scene,g,fluid,soft,stretch,y,mask.left[y],mask.right[y]);
  for(int x=0;x<240;++x) {
   float nx=fabsf((x+.5f-g.cx)/g.rx);
   if(widen!=1)nx/=widen;

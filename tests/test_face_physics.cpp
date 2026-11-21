@@ -151,6 +151,17 @@ int main() {
    }
   }
  }
+ // noise() floors without floorf: the same integer for any finite value in range,
+ // including -0, values just either side of integers and the extremes.
+ {
+  const auto same=[](float x){return fluid_face::floorInt(x)==static_cast<int>(floorf(x));};
+  assert(same(-0.0f)&&same(0.0f)&&same(2147483520.0f)&&same(-2147483648.0f));
+  for(int i=-70000;i<=70000;++i) {
+   const float f=static_cast<float>(i);
+   assert(same(f)&&same(nextafterf(f,-1e9f))&&same(nextafterf(f,1e9f)));
+  }
+  for(float x=-600;x<600;x+=.0137f)assert(same(x));
+ }
  // The fluid flow clock wraps at an exact period of the field: it stays precise
  // for any uptime and the wrap is invisible.
  {

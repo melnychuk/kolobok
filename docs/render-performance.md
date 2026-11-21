@@ -489,3 +489,43 @@ ESP32 estimate): vertical mask 24.9→19.0us and eyes 29.8→16.8us; paired mask
 39.6→31.9us and eyes 30.0→16.3us, versus the original `f7c8927` sources. Xtensa
 `powf`/division costs differ; only a source-matched physical capture can say
 what the device gains. No noise decimation or other approximation was added.
+
+## Fluid lattice table — measured 2026-11-22
+
+The refactor that moved the frame into `firmware/avatar_frame.h` was timed
+first: two alternating pairs of 65-second O2 captures against the previous
+firmware, all in the same finished/vertical workload (`flags-0`), at the 30fps
+cap. Mean render-side time was 13.51/14.05ms before and 14.22/14.03ms after,
+so the refactor is neutral within run-to-run noise (clip timing is seeded from
+`esp_random()`).
+
+At that point the mask stage was 45% of rendering (6.3ms), almost all of it
+the two `fluid_face::field()` calls per row: 1,080 `noise()` calls and 8,640
+lattice hashes per frame. Each hash ends in a float division, and the ESP32-S3
+FPU has none: every division is a `__divsf3` call. `floorf` is a library call
+too.
+
+- **Hash table.** The lattice repeats every 16 in x, y and z, so
+  `fluid_face::HashTable` holds all 4,096 `hash()` values (16 KB of internal
+  DRAM, built once). Same floats, so `noise()` is bit-for-bit unchanged.
+- **One table lookup per frame.** The first attempt fetched the table through
+  a function-local static inside `noise()`. That measured **2ms slower**: this
+  toolchain calls `__cxa_guard_acquire` (a lock) on every pass, not only on
+  first use. `Frame` now holds the table pointer, so there is one guard per
+  mask.
+- **`floorInt`.** `static_cast<int>(floorf(x))` becomes a truncation plus a
+  compare, identical for every finite value in `int` range (asserted in
+  `test_face_physics.cpp`, including -0 and both neighbours of each integer).
+- `sideBounds` takes `softSides`/`unusedSideStretch` from `buildMask` instead
+  of recomputing them for every row.
+
+| Same workload, back to back | Before | After |
+|---|---:|---:|
+| Mask median / mean | 6.15 / 6.25ms | 2.99 / 3.12ms |
+| Render-side mean | 13.82ms | 10.73ms |
+| Render-side p95 | 18.0ms | 15.0ms |
+
+Static RAM grows by 16 KB (the table). The device's frames are unchanged
+(`tests/test_device_frames.py`), and so are the site's: old and new
+`avatar.wasm` give identical bytes over 3,000-frame traces for the site, the
+dark widget and light mode.
