@@ -54,6 +54,8 @@ for _ in $(seq 25); do
   sleep 0.4
 done
 run layout.switch '{"name":"stick-s3"}'
+# On macOS a covered window counts as hidden too: bring it to the front first.
+"$APP" >/dev/null 2>&1 &
 sleep 4
 shown=$(workers)
 # window.minimize, not app.hide: an unbundled build doesn't hide.
