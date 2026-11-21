@@ -1,10 +1,12 @@
 /// <reference lib="dom" />
-// Local renderer for the Herdr Desktop mod. No daemon registration, network,
-// agent actions, audio, or device access. A worker lives only while leased.
+// Local renderer for the Herdr Desktop mod. No daemon registration, agent
+// actions, audio, or device access, and no network beyond one loopback
+// connection to the mod. A worker lives only while the mod keeps it connected.
 import { spawn } from "node:child_process";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { readFile, mkdir, mkdtemp, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -38,7 +40,8 @@ export async function makeRenderer(bytes) {
   });
   const e = /** @type {{memory: WebAssembly.Memory, _initialize?: () => void,
     stick_init: () => void, stick_keep_awake: () => void, stick_frame: (...args: number[]) => void,
-    stick_frame_ptr: () => number, stick_backdrop_ptr?: () => number}} */ (/** @type {unknown} */ (wasm.instance.exports));
+    stick_frame_ptr: () => number, stick_backdrop_ptr?: () => number,
+    stick_set_display?: (dither: number, alphaLevels: number) => void}} */ (/** @type {unknown} */ (wasm.instance.exports));
   memory = e.memory;
   e._initialize?.();
   e.stick_init();
@@ -52,6 +55,12 @@ export async function makeRenderer(bytes) {
     return new Uint8Array(e.memory.buffer, e.stick_frame_ptr(), SOURCE_W * SOURCE_H * 3);
   };
   return Object.assign(frame, {
+    /** False when this avatar.wasm predates the widget display options. */
+    canSetDisplay: typeof e.stick_set_display === "function",
+    /** Widget display options for following frames; see avatar_wasm.cpp. */
+    setDisplay(dither = true, alphaLevels = 0) {
+      e.stick_set_display?.(dither ? 1 : 0, alphaLevels);
+    },
     backdrop() {
       const ptr = e.stick_backdrop_ptr?.();
       return ptr ? new Uint16Array(e.memory.buffer, ptr, SOURCE_W * 4) : null;
@@ -72,46 +81,80 @@ export function control(input) {
   };
 }
 
-// Nearest-neighbor sampling of the real framebuffer. Merge equal-color runs
-// across adjacent rows, keeping the mod's number of path operations small.
+// Nearest-neighbor sampling of the real framebuffer, packed into rectangles in
+// painter's order: colors with the most pixels are painted first, and a color's
+// rectangles may run under pixels of any color painted after it. A field split
+// by the face then costs one rectangle per row, not one per piece. Equal spans
+// on adjacent rows merge. Pixels shown by the native backdrop (-1) are holes
+// that no rectangle covers. The mod must paint colors in the returned order.
 /** @param {Uint8Array} rgb @param {number} width @param {number} background @param {Uint32Array | null} rows */
 export function packFrame(rgb, width, background, quantize = 1, rows = null) {
   const height = Math.round(width * SOURCE_H / SOURCE_W);
-  const colors = new Map();
-  let above = new Map();
   const snap = (/** @type {number} */ channel) => Math.min(255, Math.round(channel / quantize) * quantize);
+  const grid = new Int32Array(width * height);
+  /** @type {Map<number, {area: number, x0: number, y0: number, x1: number, y1: number}>} */
+  const found = new Map();
   for (let y = 0; y < height; y++) {
-    const row = new Map();
     const sourceY = Math.floor((y + 0.5) * SOURCE_H / height);
-    const pixel = (/** @type {number} */ x) => {
+    for (let x = 0; x < width; x++) {
       const sourceX = Math.floor((x + 0.5) * SOURCE_W / width);
       const i = (sourceY * SOURCE_W + sourceX) * 3;
       const r = rgb[i], g = rgb[i + 1], b = rgb[i + 2];
-      const color = (r << 16) | (g << 8) | b;
-      if (color === (rows ? rows[(sourceY & 3) * SOURCE_W + sourceX] : background)) return -1;
-      if (quantize === 1 || color === background || EXACT_COLORS.has(color)) return color;
-      return (snap(r) << 16) | (snap(g) << 8) | snap(b);
-    };
-    for (let x = 0; x < width;) {
-      const color = pixel(x);
-      let end = x + 1;
-      while (end < width && pixel(end) === color) end++;
-      if (color >= 0) {
-        const key = `${color}:${x}:${end}`;
-        let rect = above.get(key);
-        if (rect) rect[3] = y + 1;
-        else {
-          rect = [x, y, end, y + 1];
-          if (!colors.has(color)) colors.set(color, []);
-          colors.get(color).push(rect);
-        }
-        row.set(key, rect);
+      let color = (r << 16) | (g << 8) | b;
+      if (color === (rows ? rows[(sourceY & 3) * SOURCE_W + sourceX] : background)) color = -1;
+      else if (quantize !== 1 && color !== background && !EXACT_COLORS.has(color)) {
+        color = (snap(r) << 16) | (snap(g) << 8) | snap(b);
       }
-      x = end;
+      grid[y * width + x] = color;
+      if (color < 0) continue;
+      const box = found.get(color);
+      if (!box) found.set(color, { area: 1, x0: x, y0: y, x1: x + 1, y1: y + 1 });
+      else {
+        box.area++;
+        if (x < box.x0) box.x0 = x;
+        if (x >= box.x1) box.x1 = x + 1;
+        box.y1 = y + 1;
+      }
     }
-    above = row;
   }
-  return [...colors].map(([color, rects]) => [`#${color.toString(16).padStart(6, "0")}`, rects]);
+  const order = [...found].sort((a, b) => b[1].area - a[1].area);
+  /** @type {Map<number, number>} */
+  const rankOf = new Map(order.map(([color], rank) => [color, rank]));
+  const rank = Int32Array.from(grid, (color) => color < 0 ? -1 : /** @type {number} */ (rankOf.get(color)));
+  return order.map(([color, box], level) => {
+    /** @type {[number, number, number, number][]} */
+    const rects = [];
+    let above = new Map();
+    for (let y = box.y0; y < box.y1; y++) {
+      const row = new Map();
+      const base = y * width;
+      // A span runs over this and later layers; only this color's pixels anchor it.
+      for (let x = box.x0; x < box.x1;) {
+        if (rank[base + x] < level) {
+          x++;
+          continue;
+        }
+        let end = x, first = -1, last = -1;
+        while (end < width && rank[base + end] >= level) {
+          if (grid[base + end] === color) {
+            if (first < 0) first = end;
+            last = end;
+          }
+          end++;
+        }
+        if (first >= 0) {
+          const key = first * 65536 + last;
+          let rect = above.get(key);
+          if (rect) rect[3] = y + 1;
+          else rects.push(rect = [first, y, last + 1, y + 1]);
+          row.set(key, rect);
+        }
+        x = end;
+      }
+      above = row;
+    }
+    return /** @type {[`#${string}`, [number, number, number, number][]]} */ ([css(color), rects]);
+  });
 }
 
 // Keep the solid status fills, eyes and numeral ink. In busy shots the LCD's
@@ -149,6 +192,21 @@ export function smoothStatusBackdrop(raw, background) {
   return { rows, stops };
 }
 
+/** Rectangles plus a per-color overhead: roughly what one frame costs the mod. */
+export const frameCost = (/** @type {[string, unknown[]][]} */ ink) =>
+  ink.reduce((n, [, rects]) => n + rects.length + 2, 0);
+
+// The widget asks the renderer for an undithered field and few edge colors.
+// Two coverage levels keep a one-step soft edge; busier frames use hard edges
+// so the mod's main-thread work stays well under the old budget.
+export const SOFT_BUDGET = 250;
+/** @param {number} levels @param {number} cost of the last frame at those levels */
+export function nextLevels(levels, cost) {
+  if (levels === 2 && cost > SOFT_BUDGET) return 1;
+  if (levels === 1 && cost < SOFT_BUDGET * 0.4) return 2; // Hard edges cost about half.
+  return levels;
+}
+
 /** @param {Uint8Array} rgb @param {Input} input @param {Uint16Array | null} rawBackdrop */
 export function displayFrame(rgb, input, rawBackdrop = null) {
   const { width, background } = input;
@@ -157,59 +215,128 @@ export function displayFrame(rgb, input, rawBackdrop = null) {
   for (const [sample, quantize] of [[width * 2, 1], [width, 1], [width, 16], [width, 32],
     [width, 48], [Math.ceil(width * 0.75), 48], [Math.ceil(width * 0.5), 64], [Math.ceil(width / 3), 64]]) {
     const ink = packFrame(rgb, sample, background, quantize, status?.rows ?? null);
-    const rectangles = ink.reduce((n, [, rects]) => n + rects.length, 0);
-    if (rectangles + ink.length * 2 <= (status ? 345 : 385) || sample <= Math.ceil(width / 3)) {
+    if (frameCost(ink) <= (status ? 345 : 385) || sample <= Math.ceil(width / 3)) {
       return [width, background, sample, ink, status?.stops ?? []];
     }
   }
   throw new Error("No display grid");
 }
 
-/** @param {string} root @param {string} initial @param {string} serial */
-async function launch(root, initial, serial) {
-  await mkdir(root, { recursive: true, mode: 0o700 });
-  const dir = await mkdtemp(join(root, "view-"));
+// The mod and its worker talk over one loopback TCP connection, so frames and
+// input stay in memory. The launcher prints the worker's port and a one-time
+// token; the first line on the connection must be that token.
+/** @param {string} serial */
+async function launch(serial) {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--worker", serial], {
+    detached: true, stdio: ["ignore", "pipe", "ignore"], windowsHide: true,
+  });
   try {
-    await writeFile(join(dir, "input.json"), initial, { mode: 0o600 });
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--worker", dir, serial], {
-      detached: true, stdio: "ignore", windowsHide: true,
+    const stdout = /** @type {import("node:stream").Readable} */ (child.stdout);
+    const line = await new Promise((resolve, reject) => {
+      let text = "";
+      const timer = setTimeout(() => reject(new Error("Renderer did not start")), 5000);
+      stdout.setEncoding("utf8").on("data", (/** @type {string} */ chunk) => {
+        text += chunk;
+        const end = text.indexOf("\n");
+        if (end >= 0) {
+          clearTimeout(timer);
+          resolve(text.slice(0, end));
+        }
+      });
+      child.once("error", reject).once("exit", () => reject(new Error("Renderer exited")));
     });
-    await new Promise((resolve, reject) => child.once("spawn", resolve).once("error", reject));
+    if (!/^\d+ [0-9a-f]{48}$/.test(line)) throw new Error("Renderer did not start");
+    stdout.destroy();
     child.unref();
-    process.stdout.write(basename(dir));
+    process.stdout.write(line);
   } catch (error) {
-    await rm(dir, { recursive: true, force: true });
+    child.kill();
     throw error;
   }
 }
 
-/** @param {string} dir @param {string} serial */
-async function worker(dir, serial) {
-  const lease = join(dir, "input.json");
-  let last = performance.now() - FRAME_MS;
+/** @param {string} a @param {string} b */
+const sameToken = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+/** @param {string} serial */
+async function worker(serial) {
+  const token = randomBytes(24).toString("hex");
+  const started = performance.now();
   let input = control({});
+  let lastInput = started;
+  /** @type {import("node:net").Socket | null} */
+  let client = null;
+  let closed = false;
+  const server = createServer((socket) => {
+    if (client) {
+      socket.destroy();
+      return;
+    }
+    let text = "";
+    let trusted = false;
+    const timer = setTimeout(() => socket.destroy(), 2000);
+    socket.setNoDelay(true).setEncoding("utf8").on("error", () => {});
+    socket.on("close", () => {
+      clearTimeout(timer);
+      if (socket === client) closed = true;
+    });
+    socket.on("data", (/** @type {string} */ chunk) => {
+      text += chunk;
+      for (let end = text.indexOf("\n"); end >= 0; end = text.indexOf("\n")) {
+        const line = text.slice(0, end);
+        text = text.slice(end + 1);
+        if (!trusted) {
+          if (client || !sameToken(line, token)) {
+            socket.destroy();
+            return;
+          }
+          trusted = true;
+          clearTimeout(timer);
+          client = socket;
+          server.close(); // One viewer per worker; a new view launches its own.
+        } else {
+          // Keep the last good input if a line is ever malformed.
+          try { input = control(JSON.parse(line)); } catch { /* Ignore. */ }
+        }
+        lastInput = performance.now();
+      }
+      if (text.length > 65536) socket.destroy();
+    });
+  });
+  await new Promise((resolve, reject) => server.once("error", reject).listen(0, "127.0.0.1", () => resolve(null)));
+  const address = /** @type {import("node:net").AddressInfo} */ (server.address());
+  process.stdout.end(`${address.port} ${token}\n`);
+
+  let last = performance.now() - FRAME_MS;
   let connected = false;
   let nextProbe = 0;
+  /** @type {Promise<void> | null} */
+  let probe = null;
+  let levels = 2;
+  let tick = performance.now();
   /** @type {Awaited<ReturnType<typeof makeRenderer>> | null} */
   let render = null;
+  let lastSequence = 0;
+  let lastVisual = "";
   try {
-    let lastInput = "";
-    let lastSequence = 0;
-    let lastVisual = "";
     for (;;) {
-      const leaseStat = await stat(lease);
-      if (Date.now() - leaseStat.mtimeMs > LEASE_MS) break;
-      const next = await readFile(lease, "utf8");
-      if (next !== lastInput) {
-        // A mod write can still be in progress. Keep the last complete input.
-        try {
-          input = control(JSON.parse(next));
-          lastInput = next;
-        } catch { /* Retry on the next tick. */ }
+      // The mod sends its input at least every second; silence means it is gone.
+      if (closed || performance.now() - lastInput > LEASE_MS) break;
+      const socket = client;
+      if (!socket) {
+        await delay(FRAME_MS);
+        continue;
       }
-      if (performance.now() >= nextProbe) {
-        connected = (await stickPresent(serial)) ?? connected;
-        nextProbe = performance.now() + 1000;
+      // USB detection runs a process; never let it hold up a frame.
+      if (!probe && performance.now() >= nextProbe) {
+        probe = stickPresent(serial).then((present) => {
+          connected = present ?? connected;
+        }).finally(() => {
+          probe = null;
+          nextProbe = performance.now() + 1000;
+        });
+        // Only the first answer is awaited, so a plugged-in Stick never flashes open.
+        if (!nextProbe) await probe;
       }
       const now = performance.now();
       const steps = Math.min(4, Math.floor((now - last) / FRAME_MS));
@@ -218,32 +345,43 @@ async function worker(dir, serial) {
         render = null;
         last = now - FRAME_MS;
       } else if (steps > 0) {
-        render ??= await makeRenderer(await readFile(new URL("avatar.wasm", import.meta.url)));
+        if (!render) {
+          render = await makeRenderer(await readFile(new URL("avatar.wasm", import.meta.url)));
+          render.setDisplay(false, levels);
+        }
         last = now - ((now - last) % FRAME_MS);
-        visual = JSON.stringify(displayFrame(render(input, steps), input, render.backdrop()));
+        const shown = displayFrame(render(input, steps), input, render.backdrop());
+        const next = nextLevels(levels, frameCost(shown[3]));
+        if (next !== levels) render.setDisplay(false, (levels = next));
+        visual = JSON.stringify(shown);
       } else {
         await delay(FRAME_MS);
         continue;
       }
-      if (visual !== lastVisual || now - lastSequence > 500) {
-        await writeFile(join(dir, "frame.tmp"), `${now}\n${visual}`, { mode: 0o600 });
-        await rename(join(dir, "frame.tmp"), join(dir, "frame.json"));
+      // Resend an unchanged frame twice a second as a heartbeat. Skip frames
+      // rather than queue them if the mod falls behind.
+      if ((visual !== lastVisual || now - lastSequence > 500) && socket.writableLength < 65536) {
+        socket.write(`${visual}\n`);
         lastVisual = visual;
         lastSequence = now;
       }
-      await delay(connected ? 250 : input.focused ? 65 : 130);
+      // Hold a steady cadence: wait out the rest of the interval, not a whole
+      // interval after the work, so a slow frame doesn't push every later one.
+      let interval = 130;
+      if (connected) interval = 250;
+      else if (input.focused) interval = 65;
+      tick = Math.max(tick + interval, performance.now());
+      await delay(tick - performance.now());
     }
-  } catch (error) {
-    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
   } finally {
-    await Promise.all(["input.json", "frame.tmp", "frame.json"].map((name) => rm(join(dir, name), { force: true })));
-    await rmdir(dir);
+    server.close();
+    client?.destroy();
   }
 }
 
 if (process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url) {
-  const [mode, dir, initial = "", serial = ""] = process.argv.slice(2);
-  if (mode === "--launch" && dir && initial) await launch(dir, initial, serial);
-  else if (mode === "--worker" && dir && /^view-[a-zA-Z0-9]+$/.test(basename(dir))) await worker(dir, initial);
+  const [mode, serial = ""] = process.argv.slice(2);
+  if (mode === "--launch") await launch(serial);
+  else if (mode === "--worker") await worker(serial);
   else process.exitCode = 2;
 }

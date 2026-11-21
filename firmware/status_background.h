@@ -25,7 +25,7 @@ inline uint16_t color(int x,int y,uint16_t done,uint16_t active,
                       float donePresence,float activePresence,
                       uint16_t portrait=0,float portraitPresence=0,
                       uint16_t wash=0,float washPresence=0,
-                      uint16_t alert=0,float alertPresence=0) {
+                      uint16_t alert=0,float alertPresence=0,bool dither=true) {
  donePresence=clamp(donePresence);activePresence=clamp(activePresence);
  portraitPresence=clamp(portraitPresence);washPresence=clamp(washPresence);
  alertPresence=clamp(alertPresence);
@@ -33,7 +33,8 @@ inline uint16_t color(int x,int y,uint16_t done,uint16_t active,
  const float spatial=weight(x);
  // Static subpixel dithering softens RGB565 banding without animated grain.
  constexpr uint8_t bayer[4][4]={{0,8,2,10},{12,4,14,6},{3,11,1,9},{15,7,13,5}};
- const float threshold=(bayer[static_cast<unsigned int>(y)&3][static_cast<unsigned int>(x)&3]+.5f)/16;
+ // Desktop widgets can turn it off: they draw the gradient natively instead.
+ const float threshold=dither?(bayer[static_cast<unsigned int>(y)&3][static_cast<unsigned int>(x)&3]+.5f)/16:.5f;
  const int shifts[]={11,5,0},masks[]={31,63,31};
  int result[3]={};
  for(int c=0;c<3;++c) {
@@ -102,13 +103,14 @@ struct SortingDeparture {
 struct RowCache {
  State previous={0,0,0,0,0,0,0,0,0,0};
  bool valid=false;
+ bool dither=true;  // The device always dithers; see color().
  template<class Pixel>
  bool update(const State& state,Pixel pixel) {
   if(valid && state==previous)return false;
   for(int y=0;y<4;++y)for(int x=0;x<240;++x)
    pixel(x,y,color(x,y,state.done,state.active,state.donePresence,state.activePresence,
                    state.portrait,state.portraitPresence,state.wash,state.washPresence,
-                   state.alert,state.alertPresence));
+                   state.alert,state.alertPresence,dither));
   previous=state;valid=true;return true;
  }
 };

@@ -1,14 +1,16 @@
 /// <reference lib="dom" />
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
+import { once } from "node:events";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import { control, displayFrame, makeRenderer, packFrame, smoothStatusBackdrop } from "../herdr/runtime/renderer.mjs";
+import { control, displayFrame, frameCost, makeRenderer, nextLevels, packFrame, SOFT_BUDGET, smoothStatusBackdrop } from "../herdr/runtime/renderer.mjs";
 import { linuxPresence, macPresence } from "../herdr/runtime/presence.mjs";
 import { summarize } from "../herdr/stick-s3-avatar/status.js";
 import { loadAvatar } from "../site/js/avatar.js";
@@ -95,6 +97,50 @@ test("paired status sends an unquantized gradient and retains the themed foregro
   assert.deepEqual(packFrame(backdrop, 240, input.background, 1, rows), []);
 });
 
+test("widget display options flatten the field and cut edge colors at full resolution", async () => {
+  const colors = (/** @type {Uint8Array} */ rgb) => {
+    const seen = new Set();
+    for (let i = 0; i < rgb.length; i += 3) seen.add((rgb[i] << 16) | (rgb[i + 1] << 8) | rgb[i + 2]);
+    return seen.size;
+  };
+  const input = control({ active: 2, blocked: 1, background: 0x101114, focused: true });
+  const site = await makeRenderer(bytes);
+  const widget = await makeRenderer(bytes);
+  assert.equal(widget.canSetDisplay, true);
+  widget.setDisplay(false, 1);
+  const soft = Uint8Array.from(site(input, 150));
+  const hard = widget(input, 150);
+  assert.ok(colors(hard) * 4 < colors(soft), `${colors(hard)} vs ${colors(soft)} colors`);
+  const ink = packFrame(hard, 240, input.background);
+  assert.ok(frameCost(ink) < 385);
+  // Painted in order, later colors over earlier ones, the rectangles are exact.
+  const painted = new Int32Array(240 * 135).fill(-1);
+  for (const [color, rects] of ink) {
+    for (const [x0, y0, x1, y1] of rects) {
+      for (let y = y0; y < y1; y++) painted.fill(Number.parseInt(color.slice(1), 16), y * 240 + x0, y * 240 + x1);
+    }
+  }
+  for (let i = 0; i < painted.length; i++) {
+    const color = (hard[i * 3] << 16) | (hard[i * 3 + 1] << 8) | hard[i * 3 + 2];
+    assert.equal(painted[i], color === input.background ? -1 : color);
+  }
+  // Undithered: all four backdrop rows are the same row.
+  const rows = /** @type {Uint16Array} */ (widget.backdrop());
+  for (let y = 1; y < 4; y++) assert.deepEqual(rows.subarray(y * 240, y * 240 + 240), rows.subarray(0, 240));
+  // Switching back restores the site's exact frames from then on.
+  widget.setDisplay(true, 0);
+  site(input, 1);
+  widget(input, 1);
+  assert.deepEqual(widget(input, 30), site(input, 30));
+});
+
+test("edge levels drop to hard edges over budget and come back with headroom", () => {
+  assert.equal(nextLevels(2, SOFT_BUDGET), 2);
+  assert.equal(nextLevels(2, SOFT_BUDGET + 1), 1);
+  assert.equal(nextLevels(1, SOFT_BUDGET * 0.5), 1);
+  assert.equal(nextLevels(1, SOFT_BUDGET * 0.3), 2);
+});
+
 test("USB detection requires both IDs on the same macOS device and matches a configured serial", () => {
   const device = (/** @type {number} */ vid, /** @type {number} */ pid) =>
     `  +-o USB Device <class IOUSBHostDevice>\n    "idVendor" = ${vid}\n    "idProduct" = ${pid}\n    "USB Serial Number" = "AA:11"\n`;
@@ -118,31 +164,44 @@ test("Linux USB detection checks sysfs and not the serial device", async (cx) =>
   assert.equal(await linuxPresence(folder, ""), false);
 });
 
-test("the leased worker pauses on USB attach, resumes on removal, and exits on close", async () => {
+test("the socket worker pauses on USB attach, resumes on removal, and exits on close", async () => {
   const folder = await mkdtemp(join(tmpdir(), "stick-renderer-test-"));
   try {
-    const mod = join(folder, "mod");
-    await mkdir(mod);
-    const script = join(mod, "renderer.mjs");
+    const script = join(folder, "renderer.mjs");
     await copyFile(new URL("../herdr/runtime/renderer.mjs", import.meta.url), script);
-    const presence = join(mod, "presence.txt");
+    const presence = join(folder, "presence.txt");
     await writeFile(presence, "0");
-    await writeFile(join(mod, "presence.mjs"), `import { readFile } from "node:fs/promises";
+    await writeFile(join(folder, "presence.mjs"), `import { readFile } from "node:fs/promises";
       export const stickPresent = async () => (await readFile(new URL("presence.txt", import.meta.url), "utf8")) === "1";`);
-    await copyFile(wasm, join(mod, "avatar.wasm"));
-    const root = join(folder, "data");
+    await copyFile(wasm, join(folder, "avatar.wasm"));
+    const { stdout } = await run(process.execPath, [script, "--launch"], { timeout: 2500 });
+    const [port, token] = stdout.split(" ");
+    assert.match(stdout, /^\d+ [0-9a-f]{48}$/);
+
+    // A wrong token is refused without taking the worker's only seat.
+    const stranger = connect(Number(port), "127.0.0.1");
+    stranger.on("error", () => {});
+    stranger.write("0".repeat(48) + "\n");
+    await once(stranger, "close");
+
+    const socket = connect(Number(port), "127.0.0.1");
+    socket.setEncoding("utf8");
+    /** @type {string[]} */
+    const lines = [];
+    let text = "";
+    socket.on("data", (/** @type {string} */ chunk) => {
+      text += chunk;
+      for (let end = text.indexOf("\n"); end >= 0; end = text.indexOf("\n")) {
+        lines.push(text.slice(0, end));
+        text = text.slice(end + 1);
+      }
+    });
     const initial = { active: 2, focused: true, width: 120 };
-    const { stdout } = await run(process.execPath, [script, "--launch", root, JSON.stringify(initial)], { timeout: 2500 });
-    assert.match(stdout, /^view-[a-zA-Z0-9]+$/);
-    const view = join(root, stdout);
-    const input = join(view, "input.json");
+    socket.write(`${token}\n${JSON.stringify(initial)}\n`);
     const waitFor = async (/** @type {number | null} */ width) => {
       for (let i = 0; i < 80; i++) {
-        const raw = await readFile(join(view, "frame.json"), "utf8").catch(() => "");
-        if (raw) {
-          const frame = JSON.parse(raw.slice(raw.indexOf("\n") + 1));
-          if ((frame?.[0] ?? null) === width) return;
-        }
+        const frame = lines.length ? JSON.parse(lines[lines.length - 1]) : undefined;
+        if (frame !== undefined && (frame?.[0] ?? null) === width) return;
         await delay(30);
       }
       assert.fail(`No frame for width ${width}`);
@@ -150,12 +209,20 @@ test("the leased worker pauses on USB attach, resumes on removal, and exits on c
     await waitFor(120);
     await writeFile(presence, "1");
     await waitFor(null);
-    await writeFile(input, JSON.stringify({ ...initial, width: 50, done: 1 }));
+    socket.write(`${JSON.stringify({ ...initial, width: 50, done: 1 })}\n`);
     await writeFile(presence, "0");
     await waitFor(50);
-    await unlink(input);
-    for (let i = 0; i < 40 && (await readdir(root)).length; i++) await delay(30);
-    assert.deepEqual(await readdir(root), []);
+    // Closing our end stops the worker, which then refuses new connections.
+    socket.end();
+    await once(socket, "close");
+    for (let i = 0; i < 40; i++) {
+      const probe = connect(Number(port), "127.0.0.1");
+      const refused = await once(probe, "connect").then(() => false, () => true);
+      probe.destroy();
+      if (refused) return;
+      await delay(30);
+    }
+    assert.fail("Worker kept listening after close");
   } finally {
     await rm(folder, { recursive: true, force: true });
   }

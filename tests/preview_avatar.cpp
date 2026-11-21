@@ -28,9 +28,17 @@ uint16_t blend(uint16_t a,uint16_t b,float t) {
  return (r<<11)|(g<<5)|bl;
 }
 float approach(float v,float target,float dt,float tau) { return avatar_scene::approach(v,target,dt,tau); }
+// Desktop display options; the device and the site never set them. A widget
+// that redraws frames as native shapes pays per color and per rectangle, so it
+// can ask for fewer blended edge colors. Coverage is rounded to `alphaLevels`
+// steps (1 = hard edges); 0 keeps full anti-aliasing.
+namespace display {
+int alphaLevels=0;
+}
 struct Canvas {
  uint16_t pixels[W*H]={};
  void ink(int x,int y,uint16_t color,float alpha=1) {
+  if(display::alphaLevels>0)alpha=floorf(alpha*display::alphaLevels+.5f)/display::alphaLevels;
   if(x>=0&&x<W&&y>=0&&y<H)pixels[y*W+x]=blend(pixels[y*W+x],color,alpha);
  }
  void output(bool ppm,uint32_t darkRgb=0) {

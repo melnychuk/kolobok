@@ -63,6 +63,16 @@ __attribute__((export_name("stick_frame_ptr"))) unsigned char* stick_frame_ptr()
 __attribute__((export_name("stick_backdrop_ptr"))) const uint16_t* stick_backdrop_ptr() {
  return avatar?avatar->preview.backdrop[0]:nullptr;
 }
+// Desktop widget display options; the site never calls this, so its frames are
+// unchanged. dither=0 leaves the status field undithered (the widget draws its
+// gradient natively). alphaLevels>0 rounds edge coverage to that many steps
+// (1 = hard edges); 0 keeps full anti-aliasing. Takes effect on the next frame.
+__attribute__((export_name("stick_set_display"))) void stick_set_display(int dither,int alphaLevels) {
+ if(!avatar)stick_init();
+ auto& cache=avatar->preview.backgroundCache;
+ if(cache.dither!=(dither!=0)) { cache.dither=dither!=0;cache.valid=false; }
+ display::alphaLevels=alphaLevels<0?0:alphaLevels>16?16:alphaLevels;
+}
 // ms must be monotonic. blocked<=active ("needs you" is a subset of active work).
 __attribute__((export_name("stick_frame")))
 void stick_frame(uint32_t ms,int active,int blocked,int done,int listening,int healthy,uint32_t background) {

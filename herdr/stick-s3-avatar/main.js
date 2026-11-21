@@ -1,7 +1,8 @@
 import { Background, PathBuilder, View, div } from "gpui-kit";
 import { v_flex } from "gpui-base";
 import { agents, appHome, exec, layout, readTextFile, run, theme, window as herdrWindow } from "herdr";
-import { unlink, writeFile } from "fs/promises";
+import { Buffer } from "buffer";
+import { connect } from "net";
 import { summarize } from "./status.js";
 
 const MOD = "stick-s3-avatar";
@@ -19,25 +20,28 @@ function avatarBlock(node) {
 }
 
 /** @typedef {[`#${string}`, [number, number, number, number][]]} Ink */
+/** @typedef {[number, number, number, Ink[], `#${string}`[]?]} Frame */
+/** @typedef {Awaited<ReturnType<typeof connect>>} Socket */
 
 export default class StickAvatar extends View {
   width = 44;
   input = "";
-  dir = "";
+  /** @type {Socket | null} */
+  socket = null;
   lastWrite = 0;
-  lastPoll = 0;
   lastInput = "";
   lastOutput = "";
-  lastEnvelope = "";
   lastFrame = 0;
   retryAt = 0;
   pending = false;
+  writing = false;
   closed = false;
-  active = false;
   /** @type {boolean | null} */
   connected = null;
   unavailable = false;
   sampleWidth = MAX_WIDTH;
+  /** Width and background of the latest input, which frames must match. */
+  shape = [0, 0];
   /** @type {`#${string}`[]} */
   backdrop = [];
   /** @type {Ink[]} */
@@ -48,77 +52,123 @@ export default class StickAvatar extends View {
     cx.timer.every(67, (cx) => this.refresh(cx));
   }
 
+  // Frames and input travel over one loopback connection to the local
+  // renderer, never through files.
   /** @param {import('gpui-kit').Context} cx */
   refresh(cx) {
     const now = Date.now();
-    const changed = this.lastInput !== this.input;
     if (!this.input || this.pending || this.closed || now < this.retryAt) return;
-    if ((!this.active || this.connected) && !changed && now - this.lastPoll < 400) return;
-    this.lastPoll = now;
+    if (this.socket) {
+      if (now - this.lastFrame > 2500) this.fail(cx, "Renderer stopped publishing");
+      else if (this.input !== this.lastInput || now - this.lastWrite >= 900) this.send(cx, this.socket);
+      return;
+    }
     this.pending = true;
     cx.spawn(async (cx) => {
       try {
-        if (!this.dir) {
-          const home = appHome();
-          const mod = `${home}/mods/${MOD}`;
-          const root = `${home}/data/${MOD}`;
-          const config = await readTextFile(`${mod}/runtime.json`);
-          const { node, usbSerial } = JSON.parse(config ?? "{}");
-          if (typeof node !== "string") throw new Error("Node path not installed");
-          const serial = typeof usbSerial === "string" ? usbSerial : "";
-          const result = await exec(node, [`${mod}/renderer.mjs`, "--launch", root, this.input, serial]);
-          const name = result.stdout.trim();
-          if (result.code !== 0 || !/^view-[a-zA-Z0-9]+$/.test(name)) throw new Error("Renderer did not launch");
-          this.dir = `${root}/${name}`;
-          this.lastFrame = now;
-          if (this.closed) {
-            await this.release();
-            return;
-          }
+        const mod = `${appHome()}/mods/${MOD}`;
+        const config = await readTextFile(`${mod}/runtime.json`);
+        const { node, usbSerial } = JSON.parse(config ?? "{}");
+        if (typeof node !== "string") throw new Error("Node path not installed");
+        const serial = typeof usbSerial === "string" ? usbSerial : "";
+        const result = await exec(node, [`${mod}/renderer.mjs`, "--launch", serial]);
+        const [port, token] = result.stdout.trim().split(" ");
+        if (result.code !== 0 || !/^\d+$/.test(port) || !/^[0-9a-f]{48}$/.test(token ?? "")) {
+          throw new Error("Renderer did not launch");
         }
-        if (changed || now - this.lastWrite >= 900) {
-          const status = this.input;
-          await writeFile(`${this.dir}/input.json`, status);
-          this.lastInput = status;
-          this.lastWrite = Date.now();
+        const socket = await connect("127.0.0.1", Number(port));
+        if (this.closed) {
+          socket.close();
+          return;
         }
-        const envelope = await readTextFile(`${this.dir}/frame.json`);
-        if (envelope && envelope !== this.lastEnvelope) {
-          const output = envelope.slice(envelope.indexOf("\n") + 1);
-          const frame = JSON.parse(output);
-          let redraw = this.updatePresence(frame === null);
-          if (frame) {
-            const [width, background, sample, ink, backdrop = []] = frame;
-            const current = JSON.parse(this.input);
-            if (width === current.width && background === current.background && output !== this.lastOutput) {
-              this.ink = ink;
-              this.backdrop = backdrop;
-              this.sampleWidth = sample;
-              this.lastOutput = output;
-              this.unavailable = false;
-              redraw = true;
-            }
-          }
-          if (redraw) cx.notify();
-          this.lastEnvelope = envelope;
-          this.lastFrame = now;
-        } else if (now - this.lastFrame > 2500) throw new Error("Renderer stopped publishing");
+        await socket.write(`${token}\n${this.input}\n`);
+        this.lastInput = this.input;
+        this.lastWrite = this.lastFrame = Date.now();
+        this.socket = socket;
+        this.listen(cx, socket);
       } catch (error) {
-        console.warn(`Stick avatar: ${error instanceof Error ? error.message : "renderer error"}`);
-        await this.release();
-        this.lastOutput = "";
-        this.lastEnvelope = "";
-        this.ink = [];
-        this.unavailable = true;
-        this.retryAt = Date.now() + 3000;
-        if (!this.closed) {
-          this.updatePresence(false);
-          cx.notify();
-        }
+        this.fail(cx, error);
       } finally {
         this.pending = false;
       }
     });
+  }
+
+  /** @param {import('gpui-kit').Context} cx @param {Socket} socket */
+  send(cx, socket) {
+    if (this.writing) return;
+    const status = this.input;
+    this.writing = true;
+    cx.spawn(async (cx) => {
+      try {
+        await socket.write(`${status}\n`);
+        this.lastInput = status;
+        this.lastWrite = Date.now();
+      } catch (error) {
+        if (socket === this.socket) this.fail(cx, error);
+      } finally {
+        this.writing = false;
+      }
+    });
+  }
+
+  // One frame per line; only the newest complete line in a read is drawn.
+  /** @param {import('gpui-kit').Context} cx @param {Socket} socket */
+  listen(cx, socket) {
+    cx.spawn(async (cx) => {
+      let text = "";
+      try {
+        for (;;) {
+          const chunk = await socket.read();
+          if (socket !== this.socket) return;
+          if (!chunk) throw new Error("Renderer closed");
+          text += Buffer.from(chunk).toString("utf8");
+          const end = text.lastIndexOf("\n");
+          if (end < 0) {
+            if (text.length > 1 << 20) throw new Error("Renderer frame too large");
+            continue;
+          }
+          const line = text.slice(text.lastIndexOf("\n", end - 1) + 1, end);
+          text = text.slice(end + 1);
+          this.lastFrame = Date.now();
+          // A malformed line throws here and restarts the renderer.
+          if (this.show(line, JSON.parse(line))) cx.notify();
+        }
+      } catch (error) {
+        if (socket === this.socket) this.fail(cx, error);
+      }
+    });
+  }
+
+  /** @param {string} output @param {Frame | null} frame */
+  show(output, frame) {
+    let redraw = this.updatePresence(frame === null);
+    if (frame) {
+      const [width, background, sample, ink, backdrop = []] = frame;
+      if (width === this.shape[0] && background === this.shape[1] && output !== this.lastOutput) {
+        this.ink = ink;
+        this.backdrop = backdrop;
+        this.sampleWidth = sample;
+        this.lastOutput = output;
+        this.unavailable = false;
+        redraw = true;
+      }
+    }
+    return redraw;
+  }
+
+  /** @param {import('gpui-kit').Context} cx @param {unknown} error */
+  fail(cx, error) {
+    console.warn(`Stick avatar: ${error instanceof Error ? error.message : String(error)}`);
+    this.release();
+    this.lastOutput = "";
+    this.ink = [];
+    this.unavailable = true;
+    this.retryAt = Date.now() + 3000;
+    if (!this.closed) {
+      this.updatePresence(false);
+      cx.notify();
+    }
   }
 
   /** @param {boolean} connected */
@@ -135,17 +185,17 @@ export default class StickAvatar extends View {
     return true;
   }
 
-  async release() {
-    const dir = this.dir;
-    this.dir = "";
-    if (dir) {
-      try { await unlink(`${dir}/input.json`); } catch { /* The lease also expires on its own. */ }
-    }
+  // Closing the connection stops the worker; if Herdr dies instead, the
+  // worker exits once input stops arriving.
+  release() {
+    const socket = this.socket;
+    this.socket = null;
+    socket?.close();
   }
 
-  async close() {
+  close() {
     this.closed = true;
-    await this.release();
+    this.release();
   }
 
   render() {
@@ -157,9 +207,10 @@ export default class StickAvatar extends View {
     const width = Math.max(2, Math.min(MAX_WIDTH, Math.floor(this.width) - 8));
     const height = width * 9 / 16;
     const radius = Math.min(5, height / 2);
-    this.active = herdrWindow()?.active ?? false;
-    const input = JSON.stringify({ active: working + blocked, blocked, done, focused: this.active, background, width });
+    const focused = herdrWindow()?.active ?? false;
+    const input = JSON.stringify({ active: working + blocked, blocked, done, focused, background, width });
     this.input = input;
+    this.shape = [width, background];
     if (this.connected !== false) return div().size_full();
     const label = this.unavailable ? "Stick renderer unavailable"
       : `Stick avatar — Working: ${working}, Needs you: ${blocked}, Done: ${done}`;
@@ -190,8 +241,10 @@ export default class StickAvatar extends View {
       for (const [color, rects] of this.ink) {
         const geometry = PathBuilder.fill();
         for (const [x0, y0, x1, y1] of rects) {
+          // Fills close each subpath themselves; an explicit close() would cost
+          // a fifth host call per rectangle.
           geometry.move_to(x0 * sx, y0 * sy).line_to(x1 * sx, y0 * sy)
-            .line_to(x1 * sx, y1 * sy).line_to(x0 * sx, y1 * sy).close();
+            .line_to(x1 * sx, y1 * sy).line_to(x0 * sx, y1 * sy);
         }
         frame.child(window.paint_path(geometry.build(), color).absolute().top(0).left(0).size_full());
       }

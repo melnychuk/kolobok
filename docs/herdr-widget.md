@@ -82,15 +82,24 @@ mod directory and layout copy (or just remove the block from a custom layout).
 
 Herdr supplies aggregate counts, focus, theme color and available width to a
 local Node helper. It keeps one WASM instance alive across status changes and
-publishes its latest frame through a private, leased directory. The mod uses
+streams its frames over a single loopback connection (`127.0.0.1`, guarded by a
+one-time token), so nothing is written to disk while the Stick animates. The mod uses
 native GPUI paths to display the frame without creating a cache entry for each
 image. Rendering stays at the site's fixed 33 ms simulation step; Herdr presents
-at up to 15 fps. When working and done are both visible, Herdr smooths the
-blue-to-green status field using native gradients derived from the renderer's
-own dithered backdrop. Eyes, silhouette, and numerals still come from the live
-frame. Busy frames may still reduce the sampling or foreground palette to stay
-within Herdr's drawing budget. Closing or switching away from the layout releases
-the helper; if Herdr exits unexpectedly the lease expires.
+at up to 15 fps.
+
+Each frame is redrawn as rectangles on Herdr's main thread, which costs time per
+color and per rectangle. So the helper turns on two widget-only display options
+in the renderer (`stick_set_display`; the site and the device never use them):
+the status field is left undithered, and edge anti-aliasing is rounded to one
+soft step, or to hard edges when a frame is busy. That keeps every frame at the
+Stick's full 240 × 135 resolution for about half the main-thread time of the old
+half-resolution fallback. Rectangles are packed in painter's order (large areas
+first, smaller shapes on top). When working and done are both visible, Herdr
+draws the blue-to-green field as native gradients. Extreme counts can still fall
+back to a coarser grid for a few frames. Closing or switching away from the layout closes
+the connection and stops the helper; if Herdr exits unexpectedly, the helper
+stops on its own about five seconds after the mod stops sending input.
 
 This is the site's live behavior, not full ESP32 emulation: the physical sketch
 still has some of its own layout and sleep logic. The widget never acknowledges
