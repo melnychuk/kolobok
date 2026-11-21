@@ -17,8 +17,10 @@ const SOURCE_H = 135;
 const MAX_WIDTH = SOURCE_W / 2;
 const FRAME_MS = 33; // Same simulation step as the site.
 const LEASE_MS = 5000;
+/** One pixel-mode frame message: length, type, background and RGB. */
+const FRAME_MESSAGE = 8 + SOURCE_W * SOURCE_H * 3;
 
-/** @typedef {{active: number, blocked: number, done: number, focused: boolean, background: number, light: boolean, width: number}} Input */
+/** @typedef {{active: number, blocked: number, done: number, focused: boolean, background: number, light: boolean, width: number, pixels: boolean}} Input */
 /** @param {BufferSource} bytes */
 export async function makeRenderer(bytes) {
   let memory = /** @type {WebAssembly.Memory | undefined} */ (undefined);
@@ -88,7 +90,28 @@ export function control(input) {
       input.background >= 0 && input.background <= 0xffffff ? input.background : 0,
     light: input.light === true,
     width: Number.isInteger(input.width) ? Math.min(MAX_WIDTH, Math.max(2, input.width ?? MAX_WIDTH)) : MAX_WIDTH,
+    // The mod can show the frame itself (Herdr's setImage): send pixels, not rectangles.
+    pixels: input.pixels === true,
   };
+}
+
+// Pixel mode's binary messages; herdr/stick-s3-avatar/frames.js reads them.
+// A 4-byte little-endian payload length, then a type byte: "F" + background
+// (3 bytes) + RGB frame, "N" (Stick plugged in), or "H" (heartbeat).
+/** @param {"F" | "N" | "H"} type @param {number} [background] @param {Uint8Array} [rgb] */
+export function encodeMessage(type, background = 0, rgb = undefined) {
+  const size = type === "F" ? 4 + SOURCE_W * SOURCE_H * 3 : 1;
+  const out = Buffer.alloc(4 + size);
+  out.writeUInt32LE(size, 0);
+  out[4] = type.charCodeAt(0);
+  if (type === "F") {
+    if (!rgb || rgb.length !== SOURCE_W * SOURCE_H * 3) throw new Error("A frame needs the whole RGB framebuffer");
+    out[5] = (background >> 16) & 255;
+    out[6] = (background >> 8) & 255;
+    out[7] = background & 255;
+    out.set(rgb, 8);
+  }
+  return out;
 }
 
 // Nearest-neighbor sampling of the real framebuffer, packed into rectangles in
@@ -330,6 +353,9 @@ async function worker(serial) {
   let render = null;
   let lastSequence = 0;
   let lastVisual = "";
+  /** @type {Buffer | null} */
+  let lastRaw = null;
+  let lastBackground = -1;
   try {
     for (;;) {
       // The mod sends its input at least every second; silence means it is gone.
@@ -353,26 +379,48 @@ async function worker(serial) {
       const now = performance.now();
       const steps = Math.min(4, Math.floor((now - last) / FRAME_MS));
       let visual = "null";
+      /** @type {Buffer | null} */
+      let raw = null;
       if (connected) {
         render = null;
         last = now - FRAME_MS;
       } else if (steps > 0) {
         if (!render) {
           render = await makeRenderer(await readFile(new URL("avatar.wasm", import.meta.url)));
-          render.setDisplay(false, levels);
+          // Pixels show the Stick's own dithered field and anti-aliasing;
+          // rectangles need the widget display options to stay cheap.
+          if (input.pixels) render.setDisplay(true, 0);
+          else render.setDisplay(false, levels);
         }
         last = now - ((now - last) % FRAME_MS);
-        const shown = displayFrame(render(input, steps), input, render.backdrop());
-        const next = nextLevels(levels, frameCost(shown[3]));
-        if (next !== levels) render.setDisplay(false, (levels = next));
-        visual = JSON.stringify(shown);
+        const rgb = render(input, steps);
+        if (input.pixels) {
+          raw = Buffer.from(rgb); // Out of WASM memory, which the next frame reuses.
+          visual = "frame";
+        } else {
+          const shown = displayFrame(rgb, input, render.backdrop());
+          const next = nextLevels(levels, frameCost(shown[3]));
+          if (next !== levels) render.setDisplay(false, (levels = next));
+          visual = JSON.stringify(shown);
+        }
       } else {
         await delay(FRAME_MS);
         continue;
       }
-      // Resend an unchanged frame twice a second as a heartbeat. Skip frames
-      // rather than queue them if the mod falls behind.
-      if ((visual !== lastVisual || now - lastSequence > 500) && socket.writableLength < 65536) {
+      // Resend an unchanged frame twice a second as a heartbeat (pixels: a
+      // short "H"). Skip frames rather than queue them if the mod falls behind.
+      if (input.pixels) {
+        const changed = raw
+          ? !(lastRaw && lastBackground === input.background && lastRaw.equals(raw))
+          : lastVisual !== "null";
+        if ((changed || now - lastSequence > 500) && socket.writableLength < 2 * FRAME_MESSAGE) {
+          socket.write(!changed ? encodeMessage("H") : raw ? encodeMessage("F", input.background, raw) : encodeMessage("N"));
+          lastVisual = visual;
+          lastRaw = raw;
+          lastBackground = input.background;
+          lastSequence = now;
+        }
+      } else if ((visual !== lastVisual || now - lastSequence > 500) && socket.writableLength < 65536) {
         socket.write(`${visual}\n`);
         lastVisual = visual;
         lastSequence = now;

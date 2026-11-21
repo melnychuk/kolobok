@@ -10,7 +10,8 @@ import process from "node:process";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import { control, displayFrame, frameCost, makeRenderer, nextLevels, packFrame, SOFT_BUDGET, smoothStatusBackdrop } from "../herdr/runtime/renderer.mjs";
+import { control, displayFrame, encodeMessage, frameCost, makeRenderer, nextLevels, packFrame, SOFT_BUDGET, smoothStatusBackdrop } from "../herdr/runtime/renderer.mjs";
+import { FRAME_BYTES, MessageReader } from "../herdr/stick-s3-avatar/frames.js";
 import { linuxPresence, macPresence } from "../herdr/runtime/presence.mjs";
 import { summarize } from "../herdr/stick-s3-avatar/status.js";
 import { loadAvatar } from "../site/js/avatar.js";
@@ -23,8 +24,10 @@ test("Herdr statuses are modeled as firmware work (including blocked) and unread
   const counts = summarize(["blocked", "working", "working", "done", null, "idle"].map((status) => ({ status })));
   assert.deepEqual(counts, { working: 2, blocked: 1, done: 1 });
   assert.deepEqual(control({ active: counts.working + counts.blocked, blocked: counts.blocked, done: counts.done }),
-    { active: 3, blocked: 1, done: 1, focused: false, background: 0, light: false, width: 120 });
+    { active: 3, blocked: 1, done: 1, focused: false, background: 0, light: false, width: 120, pixels: false });
   assert.equal(control({ width: 200 }).width, 120);
+  assert.equal(control({ pixels: true }).pixels, true);
+  assert.equal(control({ pixels: 1 }).pixels, false);
   assert.equal(control({ light: true }).light, true);
   assert.equal(control({ light: "yes" }).light, false);
 });
@@ -248,6 +251,79 @@ test("the socket worker pauses on USB attach, resumes on removal, and exits on c
       await delay(30);
     }
     assert.fail("Worker kept listening after close");
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("pixel messages survive any split and join of socket reads", async () => {
+  const render = await makeRenderer(bytes);
+  const rgb = Uint8Array.from(render(control({ active: 1, done: 1, focused: true, pixels: true }), 3));
+  const stream = Buffer.concat([encodeMessage("F", 0x101114, rgb), encodeMessage("H"), encodeMessage("N"),
+    encodeMessage("F", 0xf4f6f9, rgb.map((c) => 255 - c))]);
+  for (const size of [1, 3, 4, 5, 1000, FRAME_BYTES + 7, stream.length]) {
+    const reader = new MessageReader();
+    const got = [];
+    for (let at = 0; at < stream.length; at += size) got.push(...reader.push(stream.subarray(at, at + size)));
+    assert.deepEqual(got.map((m) => m.type), ["F", "H", "N", "F"], `reads of ${size}`);
+    const [first, , , last] = /** @type {{type: "F", background: number, rgb: Uint8Array}[]} */ (got);
+    assert.equal(first.background, 0x101114);
+    assert.ok(Buffer.from(first.rgb).equals(Buffer.from(rgb)));
+    assert.equal(last.background, 0xf4f6f9);
+    assert.equal(last.rgb[0], 255 - rgb[0]);
+    assert.equal(reader.length, 0);
+  }
+  assert.throws(() => new MessageReader().push(Uint8Array.of(0, 0, 0, 0)), /0 bytes/);
+  assert.throws(() => new MessageReader().push(Uint8Array.of(1, 0, 0, 0, 90)), /unknown type/);
+  assert.throws(() => new MessageReader().push(Uint8Array.of(5, 0, 0, 0, 70, 0, 0, 0, 0)), /wrong size/);
+});
+
+test("pixel mode streams the Stick's own frames, with presence and heartbeats", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "stick-renderer-test-"));
+  try {
+    const script = join(folder, "renderer.mjs");
+    await copyFile(new URL("../herdr/runtime/renderer.mjs", import.meta.url), script);
+    const presence = join(folder, "presence.txt");
+    await writeFile(presence, "0");
+    await writeFile(join(folder, "presence.mjs"), `import { readFile } from "node:fs/promises";
+      export const stickPresent = async () => (await readFile(new URL("presence.txt", import.meta.url), "utf8")) === "1";`);
+    await copyFile(wasm, join(folder, "avatar.wasm"));
+    const { stdout } = await run(process.execPath, [script, "--launch"], { timeout: 2500 });
+    const [port, token] = stdout.split(" ");
+    const socket = connect(Number(port), "127.0.0.1");
+    const reader = new MessageReader();
+    /** @type {import("../herdr/stick-s3-avatar/frames.js").Message[]} */
+    const messages = [];
+    socket.on("data", (/** @type {Buffer} */ chunk) => messages.push(...reader.push(chunk)));
+    const input = { active: 1, blocked: 1, focused: false, background: 0x101114, width: 120, pixels: true };
+    socket.write(`${token}\n${JSON.stringify(input)}\n`);
+    const waitFor = async (/** @type {string} */ type) => {
+      for (let i = 0; i < 80; i++) {
+        const last = messages.findLast((m) => m.type !== "H");
+        if (last?.type === type) return last;
+        await delay(30);
+      }
+      assert.fail(`No ${type} message`);
+    };
+    const frame = /** @type {{type: "F", background: number, rgb: Uint8Array}} */ (await waitFor("F"));
+    assert.equal(frame.background, 0x101114);
+    // The site's own frame: dithered field and full anti-aliasing, not the widget's display options.
+    const site = await makeRenderer(bytes);
+    let expected = new Uint8Array(0);
+    for (let steps = 1; steps <= 40 && !Buffer.from(expected).equals(Buffer.from(frame.rgb)); steps++) {
+      expected = site(control(input), 1);
+    }
+    assert.ok(Buffer.from(expected).equals(Buffer.from(frame.rgb)), "a frame from the site's sequence");
+    await writeFile(presence, "1");
+    await waitFor("N");
+    const count = messages.length;
+    await delay(1300);
+    assert.ok(messages.slice(count).some((m) => m.type === "H"), "heartbeats while nothing changes");
+    assert.ok(messages.slice(count).every((m) => m.type === "H"), "and nothing else");
+    await writeFile(presence, "0");
+    await waitFor("F");
+    socket.end();
+    await once(socket, "close");
   } finally {
     await rm(folder, { recursive: true, force: true });
   }

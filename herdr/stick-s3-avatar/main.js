@@ -1,8 +1,10 @@
-import { Background, PathBuilder, View, div } from "gpui-kit";
+import { Background, PathBuilder, View, div, image } from "gpui-kit";
 import { v_flex } from "gpui-base";
 import { agents, appHome, exec, layout, readTextFile, run, theme, window as herdrWindow } from "herdr";
+import * as herdrApi from "herdr";
 import { Buffer } from "buffer";
 import { connect } from "net";
+import { FRAME_H, FRAME_W, MessageReader } from "./frames.js";
 import { summarize } from "./status.js";
 
 const MOD = "stick-s3-avatar";
@@ -38,6 +40,10 @@ function windowVisible() {
 /** @typedef {[`#${string}`, [number, number, number, number][]]} Ink */
 /** @typedef {[number, number, number, Ink[], `#${string}`[]?]} Frame */
 /** @typedef {Awaited<ReturnType<typeof connect>>} Socket */
+/**
+ * Herdr's setImage, in releases that have it (herdrdev/herdr-app#692).
+ * @typedef {(path: string, bytes: Uint8Array | null, options?: {width: number, height: number, format: "rgb" | "rgba"}) => Promise<null>} SetImage
+ */
 
 export default class StickAvatar extends View {
   width = 44;
@@ -66,9 +72,25 @@ export default class StickAvatar extends View {
   backdrop = [];
   /** @type {Ink[]} */
   ink = [];
+  /** Herdr shows the frame's pixels itself (setImage); else rectangles. @type {SetImage | null} */
+  setImage = null;
+  /** Where this copy's frames show (`image(path)`); no file is written there. */
+  path = "";
+  /** The newest frame not yet handed to Herdr, and whether one is being handed. */
+  /** @type {Uint8Array | null} */
+  nextPixels = null;
+  showing = false;
+  /** Background of the frame on screen, or -1 for none yet. */
+  pixelBackground = -1;
 
   /** @param {unknown} _props @param {import('gpui-kit').Context} cx */
   init(_props, cx) {
+    const setImage = /** @type {{setImage?: unknown}} */ (herdrApi).setImage;
+    if (typeof setImage === "function") {
+      this.setImage = /** @type {SetImage} */ (setImage);
+      // One path per mod: a reload replaces its frame instead of leaving one behind.
+      this.path = `mods/${MOD}/frame`;
+    }
     this.start(cx);
   }
 
@@ -156,6 +178,10 @@ export default class StickAvatar extends View {
   // One frame per line; only the newest complete line in a read is drawn.
   /** @param {import('gpui-kit').Context} cx @param {Socket} socket */
   listen(cx, socket) {
+    if (this.setImage) {
+      this.listenPixels(cx, socket);
+      return;
+    }
     cx.spawn(async (cx) => {
       let text = "";
       try {
@@ -177,6 +203,59 @@ export default class StickAvatar extends View {
         }
       } catch (error) {
         if (socket === this.socket) this.fail(cx, error);
+      }
+    });
+  }
+
+  // Pixel mode: binary messages (frames.js). Only the newest frame in a read
+  // goes on; one being handed to Herdr is replaced, never queued.
+  /** @param {import('gpui-kit').Context} cx @param {Socket} socket */
+  listenPixels(cx, socket) {
+    cx.spawn(async (cx) => {
+      const reader = new MessageReader();
+      try {
+        for (;;) {
+          const chunk = await socket.read();
+          if (socket !== this.socket) return;
+          if (!chunk) throw new Error("Renderer closed");
+          const messages = reader.push(chunk);
+          if (!messages.length) continue;
+          this.lastFrame = Date.now();
+          let redraw = false;
+          for (const message of messages) {
+            if (message.type === "H") continue;
+            redraw = this.updatePresence(message.type === "N") || redraw;
+            if (message.type === "F" && message.background === this.shape[1]) {
+              this.nextPixels = message.rgb;
+              this.unavailable = false;
+            }
+          }
+          if (redraw) cx.notify();
+          if (this.nextPixels && !this.showing) this.showPixels(cx);
+        }
+      } catch (error) {
+        if (socket === this.socket) this.fail(cx, error);
+      }
+    });
+  }
+
+  /** @param {import('gpui-kit').Context} cx */
+  showPixels(cx) {
+    const setImage = /** @type {SetImage} */ (this.setImage);
+    this.showing = true;
+    cx.spawn(async (cx) => {
+      try {
+        while (this.nextPixels && !this.closed) {
+          const rgb = this.nextPixels;
+          this.nextPixels = null;
+          await setImage(this.path, rgb, { width: FRAME_W, height: FRAME_H, format: "rgb" });
+          this.pixelBackground = this.shape[1];
+          cx.notify();
+        }
+      } catch (error) {
+        this.fail(cx, error);
+      } finally {
+        this.showing = false;
       }
     });
   }
@@ -239,6 +318,8 @@ export default class StickAvatar extends View {
     this.timer?.cancel();
     this.timer = null;
     this.release();
+    // Herdr forgets it with this copy anyway; don't keep the last frame alive.
+    if (this.setImage) void this.setImage(this.path, null).catch(() => {});
   }
 
   /** @param {import('gpui-kit').Context} cx */
@@ -258,7 +339,8 @@ export default class StickAvatar extends View {
     const height = width * 9 / 16;
     const radius = Math.min(5, height / 2);
     const focused = herdrWindow()?.active ?? false;
-    const input = JSON.stringify({ active: working + blocked, blocked, done, focused, background, light, width });
+    const input = JSON.stringify({ active: working + blocked, blocked, done, focused, background, light, width,
+      pixels: this.setImage !== null });
     this.input = input;
     this.shape = [width, background];
     if (this.connected !== false) return div().size_full();
@@ -273,7 +355,12 @@ export default class StickAvatar extends View {
       });
     if (this.unavailable) return root.child(div().text_size(10).child("Stick unavailable"));
     const frame = div().relative().w(width).h(height).flex_none().rounded(radius).overflow_hidden();
-    if (this.lastOutput.startsWith(`[${width},${background},`)) {
+    if (this.setImage) {
+      // Herdr draws the Stick's own frame, scaled to fit and rounded natively.
+      if (this.pixelBackground === background) {
+        frame.child(image(this.path).absolute().top(0).left(0).size_full().rounded(radius));
+      }
+    } else if (this.lastOutput.startsWith(`[${width},${background},`)) {
       // Draw the LCD backdrop in native gradients, then cover it with the
       // frame's actual face and numeral pixels. A half-size frame maps 1:1
       // onto the original 240×135 pixels on a 2× Retina display.
