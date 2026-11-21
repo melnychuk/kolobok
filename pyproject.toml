@@ -2,7 +2,14 @@
 name = "copilot-stick-s3"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = []  # The status bridge needs only the standard library.
+
+[project.optional-dependencies]
+# Push-to-talk dictation (bridge/local_asr.py, bridge/voice.py); site/install.sh
+# installs the same pins with --dictation.
+voice = ["numpy>=1.24", "sherpa-onnx==1.13.8"]
+# Visual-development previews (scripts/preview-*.py).
+preview = ["Pillow==12.1.1"]
 
 [tool.pyright]
 venvPath = "."

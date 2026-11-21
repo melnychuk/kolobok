@@ -94,7 +94,8 @@ pressing Enter.
 # Native suites (example), Python tests, and a GIF/contact-sheet preview gallery
 g++ -std=c++11 -O2 -Wall -Wextra -Werror tests/test_listen_wave.cpp -o /tmp/t && /tmp/t
 python3 -m unittest discover -s tests
-python3 -m pip install -r scripts/requirements-preview.txt
+uv sync --all-extras   # dev venv: voice (numpy, sherpa-onnx) and preview (Pillow) extras
+python3 -m pip install -r scripts/requirements-preview.txt   # or just the preview tool's Pillow
 python3 scripts/preview-avatar.py
 ```
 
