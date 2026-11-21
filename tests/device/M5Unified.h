@@ -29,6 +29,8 @@ inline std::deque<char> serial_in;
 // Called with the sprite's pixels each time the firmware presents a frame.
 inline void (*on_present)(const uint16_t* pixels, int width, int height) = nullptr;
 inline uint8_t brightness = 0;
+// Real time for micros() when set (stage timing in STICK_S3_PROFILE builds).
+inline uint32_t (*real_micros)() = nullptr;
 struct Button {
   bool pressed = false, was_pressed = false, was_released = false, was_clicked = false;
   uint32_t pressed_since = 0;
@@ -42,7 +44,9 @@ inline Button& button(int which) { return which ? button_b : button_a; }
 using device_shim::set_brightness;
 
 inline uint32_t millis() { return device_shim::clock_ms; }
-inline uint32_t micros() { return device_shim::clock_ms * 1000u; }
+inline uint32_t micros() {
+  return device_shim::real_micros ? device_shim::real_micros() : device_shim::clock_ms * 1000u;
+}
 inline void delay(uint32_t ms) { device_shim::clock_ms += ms; }
 // Deterministic stand-in for Arduino's random(max).
 inline long random(long limit) {

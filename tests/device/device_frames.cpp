@@ -11,6 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if STICK_S3_PROFILE
+#include <chrono>
+#endif
 #include "M5Unified.h"
 #include "../../firmware/firmware.ino"
 
@@ -19,6 +22,9 @@ uint64_t total = 1469598103934665603ull;
 uint32_t dumpAt = 0;
 bool dumping = false, dumped = false;
 uint32_t frames = 0;
+#if STICK_S3_PROFILE
+uint64_t stages[frame_profile::badges + 1] = {};
+#endif
 
 uint64_t fnv(uint64_t hash, const void* data, size_t length) {
   const auto* bytes = static_cast<const uint8_t*>(data);
@@ -41,6 +47,11 @@ void present(const uint16_t* pixels, int width, int height) {
     }
     return;
   }
+#if STICK_S3_PROFILE
+  // The firmware's own stage marks for this frame, all but the flush.
+  for (int metric = frame_profile::update; metric <= frame_profile::badges; ++metric)
+    stages[metric] += timingSample.us[metric];
+#endif
   uint64_t hash = fnv(1469598103934665603ull, pixels, static_cast<size_t>(width * height) * 2);
   hash = fnv(hash, &device_shim::brightness, 1);
   total = fnv(total, &hash, sizeof(hash));
@@ -56,6 +67,13 @@ struct Counts { int active, attention, done; };
 }  // namespace
 
 int main(int argc, char** argv) {
+#if STICK_S3_PROFILE
+  // Stage marks count nanoseconds here: host stages take microseconds.
+  device_shim::real_micros = [] {
+    return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+  };
+#endif
   if (argc == 3 && strcmp(argv[1], "--ppm") == 0) {
     dumping = true;
     dumpAt = static_cast<uint32_t>(strtoul(argv[2], nullptr, 10));
@@ -103,5 +121,11 @@ int main(int argc, char** argv) {
     b.was_pressed = b.was_released = b.was_clicked = false;
   }
   if (!dumping) printf("total %016llx frames %u\n", static_cast<unsigned long long>(total), frames);
+#if STICK_S3_PROFILE
+  static const char* const names[] = {"interval", "update", "background", "mask", "face",
+                                      "eyes", "mouth", "attention", "badges"};
+  for (int metric = frame_profile::update; metric <= frame_profile::badges; ++metric)
+    fprintf(stderr, "%-10s %8.2f us/frame\n", names[metric], stages[metric] / 1000.0 / frames);
+#endif
   return dumping && !dumped ? 1 : 0;
 }
