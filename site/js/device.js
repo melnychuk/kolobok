@@ -435,13 +435,17 @@ export class Device {
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.position.y = FLOOR;
     this.scene.add(this.shadow);
-    // A soft pool of status-coloured light on the "desk".
+    // Use normal alpha blending so the glow fades into the CSS background
+    // behind the transparent renderer. Leave a fully clear rim on the mesh.
     this.poolMat = new THREE.MeshBasicMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0x3b82f6,
+      transparent: true, depthWrite: false, color: 0x3b82f6,
       map: canvasTexture(256, 256, (g, w, h) => {
         const grad = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
-        grad.addColorStop(0, "rgba(255,255,255,.35)");
-        grad.addColorStop(1, "rgba(255,255,255,0)");
+        grad.addColorStop(0, "rgba(255,255,255,.28)");
+        grad.addColorStop(0.28, "rgba(255,255,255,.21)");
+        grad.addColorStop(0.50, "rgba(255,255,255,.10)");
+        grad.addColorStop(0.72, "rgba(255,255,255,.025)");
+        grad.addColorStop(0.92, "rgba(255,255,255,0)");
         g.fillStyle = grad;
         g.fillRect(0, 0, w, h);
       }),
