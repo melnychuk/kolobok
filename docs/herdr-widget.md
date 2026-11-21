@@ -19,6 +19,17 @@ are no active, blocked or unread-done agents, the avatar stays awake while
 Herdr is focused, dozes after about four seconds in the background, and wakes
 when Herdr gets focus again. Activity takes priority over dozing.
 
+While Herdr's window is hidden, the widget does no work at all: its timer stops
+and the helper exits, so nothing renders, streams or checks USB. That covers a
+minimized or hidden window everywhere, and on macOS also one that's fully
+covered, on another Space or on a sleeping display. When the window shows again,
+a new helper starts and checks USB before drawing anything. This needs a Herdr
+with `window().visible` ([herdrdev/herdr-app#1320](https://github.com/herdrdev/herdr-app/pull/1320));
+earlier releases keep the widget running, with its slower unfocused frame rate,
+while the window is hidden. `scripts/check-herdr-hidden.sh [herdr-app]` checks it
+in a separate Herdr: one helper while shown, none while minimized, one again
+after.
+
 ![The outlined Stick display above Agents in a dark Herdr sidebar](media/herdr-widget.png)
 
 The site's Herdr screenshots (`site/media/herdr-light.webp` and `herdr-dark.webp`)

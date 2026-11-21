@@ -25,6 +25,16 @@ function luminance(rgb) {
   return 0.2126 * linear((rgb >> 16) & 255) + 0.7152 * linear((rgb >> 8) & 255) + 0.0722 * linear(rgb & 255);
 }
 
+/**
+ * Whether Herdr's window is shown. Herdr releases before `window().visible`
+ * don't report it; treat them as always shown.
+ * @returns {boolean}
+ */
+function windowVisible() {
+  const info = /** @type {{visible?: boolean} | null | undefined} */ (herdrWindow());
+  return info?.visible !== false;
+}
+
 /** @typedef {[`#${string}`, [number, number, number, number][]]} Ink */
 /** @typedef {[number, number, number, Ink[], `#${string}`[]?]} Frame */
 /** @typedef {Awaited<ReturnType<typeof connect>>} Socket */
@@ -34,6 +44,10 @@ export default class StickAvatar extends View {
   input = "";
   /** @type {Socket | null} */
   socket = null;
+  /** @type {import('gpui-kit').Task | null} */
+  timer = null;
+  /** Herdr's window isn't shown: no timer, no renderer, until it draws again. */
+  hidden = false;
   lastWrite = 0;
   lastInput = "";
   lastOutput = "";
@@ -55,13 +69,34 @@ export default class StickAvatar extends View {
 
   /** @param {unknown} _props @param {import('gpui-kit').Context} cx */
   init(_props, cx) {
-    cx.timer.every(67, (cx) => this.refresh(cx));
+    this.start(cx);
+  }
+
+  /** @param {import('gpui-kit').Context} cx */
+  start(cx) {
+    this.hidden = false;
+    this.timer = cx.timer.every(67, (cx) => this.refresh(cx));
+  }
+
+  // A hidden window draws nothing and runs no render, so the timer notices
+  // and stops everything; render starts it again once the window shows.
+  // Herdr releases without `window().visible` never pause.
+  pause() {
+    this.hidden = true;
+    this.timer?.cancel();
+    this.timer = null;
+    // Closing the connection stops the worker and its USB probe.
+    this.release();
   }
 
   // Frames and input travel over one loopback connection to the local
   // renderer, never through files.
   /** @param {import('gpui-kit').Context} cx */
   refresh(cx) {
+    if (!windowVisible()) {
+      this.pause();
+      return;
+    }
     const now = Date.now();
     if (!this.input || this.pending || this.closed || now < this.retryAt) return;
     if (this.socket) {
@@ -83,7 +118,7 @@ export default class StickAvatar extends View {
           throw new Error("Renderer did not launch");
         }
         const socket = await connect("127.0.0.1", Number(port));
-        if (this.closed) {
+        if (this.closed || this.hidden) {
           socket.close();
           return;
         }
@@ -201,10 +236,17 @@ export default class StickAvatar extends View {
 
   close() {
     this.closed = true;
+    this.timer?.cancel();
+    this.timer = null;
     this.release();
   }
 
-  render() {
+  /** @param {import('gpui-kit').Context} cx */
+  render(cx) {
+    const visible = windowVisible();
+    // The window shows again (render runs only then): resume. A screenshot of
+    // a hidden window renders too, and must not.
+    if (this.hidden && visible && !this.closed) this.start(cx);
     const { working, blocked, done } = summarize(agents());
     const t = theme();
     const color = t.chrome ?? "#000000";

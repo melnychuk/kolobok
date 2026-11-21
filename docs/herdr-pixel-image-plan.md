@@ -1,8 +1,14 @@
-# Plan: a pixel image element in Herdr for the Stick widget
+# Plan: live pixel frames for the Stick widget in Herdr
 
 Status: proposal. Nothing here is implemented yet. It needs a change to Herdr
-Desktop (our fork: `github.com/melnychuk/herdr-app`), so it ships only in a
-locally built Herdr until it is accepted upstream.
+Desktop, prototyped in our fork (`github.com/melnychuk/herdr-app`) and proposed
+upstream through the existing request for the same capability,
+[herdrdev/herdr-app#692](https://github.com/herdrdev/herdr-app/issues/692).
+Until upstream ships it, only a locally built Herdr can use it.
+
+The first step, stopping all widget work while the window is hidden, is
+separate and already proposed: `window().visible`
+([herdrdev/herdr-app#1320](https://github.com/herdrdev/herdr-app/pull/1320)).
 
 ## Why
 
@@ -20,99 +26,103 @@ on an isolated Herdr (two working agents and one blocked, 15 frames a second):
 | resolution | half in active states | full | full |
 | edges | reduced palette | one soft step or hard | the Stick's own anti-aliasing |
 | status field | gradient approximated natively | gradient approximated natively | the Stick's own dithered field |
-| script time per render | 10.1 ms | 5.4 ms | expected well under 1 ms |
+| script time per render | 10.1 ms | 5.4 ms | expected under 1 ms (unmeasured) |
 
-An image element would show exactly what the Stick shows (the same bytes the
-site draws), and the per-frame cost would no longer depend on what is on screen.
+An image would show exactly what the Stick shows (the same bytes the site
+draws), and the script's per-frame cost would no longer depend on what is on
+screen. It doesn't remove the rest of a frame: each `cx.notify()` still redraws
+Herdr's window, so the benchmark has to report that too (see Testing).
 
 ## What Herdr already has
 
 - GPUI draws in-memory images through `ImageSource::Render(Arc<RenderImage>)`
-  (`vendor/gpui-pre/src/elements/img.rs`). Unlike a path or URL, it is used in
-  the same frame: no asynchronous load, so no flicker between frames.
-- `App::drop_image(image, window)` removes an image's texture from every
-  window's sprite atlas (`vendor/gpui-pre/src/app.rs`). Herdr already uses it to
-  evict changed files (`invalidate_image` in `src/window.rs`).
+  (`vendor/gpui-pre/src/elements/img.rs`). It is used in the same frame: no
+  asynchronous load, so no blank frame between two images.
+- Since 0.1.15 (`c3fe88f`, "release image frames when they leave the screen"),
+  a window retires an image's atlas tile at the end of a frame once neither the
+  frame just drawn nor the one before it uses it. Replacing the image a path
+  shows is enough to free the old one; no explicit `drop_image` is needed.
+- Image elements take the usual style, including rounded corners
+  (`paint_image` gets the element's corner radii), so the widget's corner matte
+  becomes unnecessary.
+- The script runtime already passes `Uint8Array`s both ways (`net`, `fs`,
+  `fetch`, `WebSocket`), and `socket.read()` returns one.
 - Image bounds are snapped to device pixels before sampling
   (`Window::paint_image`), so a 240 × 135 image in a 120 × 67.5-point box on a
   2× display maps one image pixel to one screen pixel.
-- gpui-kit keeps per-view state across renders in its component registry
-  (`vendor/gpui-kit/crates/shell/src/component_registry.rs`), which is where a
-  reusable image belongs.
 
-## Proposed API (gpui-kit)
+## Upstream
 
-A small retained surface, so a mod replaces pixels rather than creating a new
-image (and a new atlas texture) every frame:
+Herdr keeps its shared mod API small: a new API needs the maintainer's go
+(`AGENTS.md`, "Before you grow the app's core"). #692 already asks for this
+capability for a simulator mod (`setImage(path, bytes)` with PNG or JPEG
+frames), and related issues cover the same file-reload limits (#521, #498, #22;
+fixes in review: #615, #25). A second, larger API for the same need would
+compete with it, so the plan is to extend that request with a raw-pixel form
+rather than add a new component:
 
 ```js
-import { PixelImage, pixel_image } from "gpui-kit";
-
-// In init(): one surface per view.
-this.screen = PixelImage.new(240, 135);
+import { image } from "gpui-kit";
+import { setImage } from "herdr";
 
 // Whenever a frame arrives (RGB or RGBA, row-major, width × height pixels):
-this.screen.write(bytes, "rgb");
+await setImage("stick-s3/frame", bytes, { width: 240, height: 135, format: "rgb" });
 cx.notify();
 
-// In render(): an ordinary sized element.
-pixel_image(this.screen).w(120).h(67.5);
+// In render(): the ordinary image element, sized and styled as usual.
+image("stick-s3/frame").w(120).h(67.5).rounded(5);
 ```
 
-- `PixelImage.new(width, height)`: at most 4096 × 4096. It belongs to the view
-  that made it and is freed with it.
-- `write(bytes, format)`: `format` is `"rgb"` or `"rgba"`; the length must be
-  exactly `width × height × 3` (or `× 4`). It copies the bytes, converts them to
-  GPUI's BGRA, builds a new `RenderImage`, and drops the previous one with
-  `cx.drop_image` so its atlas texture is freed. Legal outside `render`
-  (a task or timer), like other state updates.
-- `pixel_image(surface)`: draws the surface's current image, or nothing before
-  the first `write`. It takes the usual size and style methods.
+- Without options, `bytes` is an encoded image (PNG or JPEG), decoded off the
+  main thread, as #692 asks.
+- With `{ width, height, format }`, `bytes` is raw pixels: at most
+  4096 × 4096, the length exactly `width × height × 3` (or `× 4`). It is
+  converted to GPUI's BGRA without decoding.
+- The path shows the newest image from the next frame on; the previous image
+  keeps showing until then. `setImage(path, null)` forgets it, and a mod's
+  images are forgotten when it unloads.
 
 ## Implementation steps (herdr-app fork)
 
-1. **Spec and registry.** Add a retained `PixelSurface { width, height, image:
-   Option<Arc<RenderImage>> }` to the component registry, and a
-   `Component::PixelImage(handle)` variant in `spec.rs` with its name in the
-   component-name table.
-2. **JavaScript binding** (`engine/quickjs/mod.rs`): export `PixelImage.new`,
-   `write` and `pixel_image`. `write` takes the `Uint8Array` in one host call
-   (about 97 KB per RGB frame, roughly 1.5 MB/s at 15 fps) and validates the
-   length and format before converting.
-3. **Release.** On `write`, swap in the new image and call `drop_image` on the
-   old one. Do the same when the owning view is closed or the mod reloads, so a
-   long-running widget never grows the sprite atlas.
-4. **Materialize** (`materialize.rs`): render `Component::PixelImage` as
-   `gpui::img(ImageSource::Render(image))` with the element's style, and an empty
-   element before the first frame.
-5. **Typings** (`typings.rs`, which generates `gpui-kit.d.ts`): declare the API
-   above with its limits.
-6. **Herdr docs** (`AGENTS.md` mod reference): one paragraph and the example.
+1. **Store.** A per-app map from the path `image()` resolves to the newest
+   `Arc<RenderImage>`, owned by the mod that set it and cleared on unload.
+2. **Binding** (`src/mods.rs`, the `herdr` module): `setImage(path, bytes,
+   options?)`, validating the path, size, length and format before converting.
+   Raw frames take one host call (about 97 KB per RGB frame, roughly 1.5 MB/s
+   at 15 fps).
+3. **Materialize** (`vendor/gpui-kit/.../materialize.rs`, `Component::Image`):
+   when the map has the path, draw `gpui::img(ImageSource::Render(image))`
+   with the element's style instead of loading the file. Rely on the frame-end
+   tile retirement to free replaced images.
+4. **Typings and docs:** `defaults/herdr.d.ts` and the mod guide in
+   `defaults/AGENTS.md`, with the example above.
 
 ## Widget changes (this repo), once Herdr has it
 
-- Feature-detect `PixelImage` in the mod; keep the rectangle renderer as the
+- Feature-detect `setImage` in the mod; keep the rectangle renderer as the
   fallback for released Herdr builds.
 - When it's available, the worker leaves `stick_set_display` at its defaults
-  (dithered field, full anti-aliasing) and streams the raw frame instead of
-  packed rectangles: a short header line (width, height, background) followed by
-  the 97,200 RGB bytes, one frame per message on the existing loopback socket.
-  `packFrame`, the edge-level policy and the native gradient aren't needed.
-- The mod reads the bytes (`socket.read` already returns a `Uint8Array`), calls
-  `write`, and draws `pixel_image` inside the existing rounded bezel and corner
-  matte.
+  (dithered field, full anti-aliasing) and streams raw frames instead of
+  packed rectangles. `packFrame`, the edge-level policy and the native gradient
+  aren't needed.
+- Framing: a frame arrives over several socket reads, so each one gets a short
+  header (length, width, height, background) and the mod reassembles it. As
+  today, only the newest complete frame in a read is shown; older ones are
+  dropped, never queued.
+- The mod passes the bytes to `setImage` and draws `image(...)` inside the
+  existing rounded bezel, without the corner matte.
 
 ## Testing
 
-- Herdr unit test, modeled on the existing image-invalidation test in
-  `src/window.rs`: write a surface twice and assert the first image's atlas
-  entry is gone; close the view and assert the second one is gone.
-- gpui-kit tests for argument validation (size limits, length mismatch, unknown
-  format) and for drawing nothing before the first `write`.
+- Herdr: a render test that sets an image twice and checks the first one's
+  atlas tile is gone after the next frames, and that unloading the mod forgets
+  the second; validation tests for size limits, length mismatch and unknown
+  formats; a path that was never set loads its file as before.
 - This repo: a worker test that the binary frame stream matches `avatar.wasm`
-  byte for byte, and `scripts/bench-herdr-avatar.py`
-  (script time per render, widget frames per second, with streaming terminals
-  and CPU load), compared against the numbers above.
+  byte for byte, and `scripts/bench-herdr-avatar.py` against the numbers above.
+  Compare script time per render (`script_ms`) and also native drawing
+  (`materialize_ms`) and render-to-paint time (`frame_ms`), which an image
+  doesn't remove.
 - Visual check with `herdr-app shot`: the widget pixels should equal the site's
   frame exactly at 2× scale.
 
@@ -122,5 +132,6 @@ pixel_image(this.screen).w(120).h(67.5);
   pixel-exact, but other Herdr zoom levels or a narrow sidebar will blur
   slightly. A nearest-neighbor option would need a Metal/wgpu sampler change and
   is left for later.
-- **Upstream.** The released Herdr.app in `/Applications` won't have this until
-  upstream accepts it. Until then, using it means running a locally built Herdr.
+- **API shape.** The maintainer may prefer a different shape for #692 (for
+  example a separate function for raw pixels); the widget side only needs some
+  way to hand Herdr one frame of pixels per call.
