@@ -58,6 +58,11 @@ __attribute__((export_name("stick_init"))) void stick_init() {
  forcedState=-1;
 }
 __attribute__((export_name("stick_frame_ptr"))) unsigned char* stick_frame_ptr() { return site_io::frame; }
+// Optional display hint: the four repeating RGB565 status rows under the face.
+// This is read-only and does not change the site's normal RGB frame output.
+__attribute__((export_name("stick_backdrop_ptr"))) const uint16_t* stick_backdrop_ptr() {
+ return avatar?avatar->preview.backdrop[0]:nullptr;
+}
 // ms must be monotonic. blocked<=active ("needs you" is a subset of active work).
 __attribute__((export_name("stick_frame")))
 void stick_frame(uint32_t ms,int active,int blocked,int done,int listening,int healthy,uint32_t background) {

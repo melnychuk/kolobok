@@ -23,10 +23,19 @@ Live demo with the real firmware renderer compiled to WebAssembly:
 | `site/` | The product page; `scripts/build-site-wasm.sh` compiles the renderer for it. |
 | `tests/` | Native C++ and Python tests, plus the native preview renderer. |
 | `experiments/qemu-sticks3/` | QEMU peripheral prototype and the USB/LCD transport timing model. |
-| `experiments/avatar-widget/` | Command-driven compositor shared by the site and desktop header. |
+| `experiments/avatar-widget/` | Shared compositor for the site and the Herdr avatar artwork. |
+| `herdr/` | Installable sidebar avatar for Herdr Desktop. |
 | `docs/` | Design notes, bridge guides and performance research. |
 
-## Install
+## Herdr Desktop widget (no hardware)
+
+Put the Stick avatar just above Agents in the left sidebar, with live status
+counts and a theme-matched display. On macOS and Linux, it makes room for
+Agents when the physical Stick is plugged in. See [installing the Herdr
+widget](docs/herdr-widget.md). This is a desktop mod,
+not an extension for the terminal-only `herdr` client.
+
+## Install the physical Stick
 
 Easiest: paste this into your coding agent (Copilot CLI, Pi, …). The
 [agent guide](site/install.md) tells it how to check your machine, ask before

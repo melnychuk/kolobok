@@ -3,3 +3,5 @@
 __pycache__/
 *.py[cod]
 firmware/build/
+/herdr/stick-s3-avatar/*.d.ts
+/herdr/stick-s3-avatar/jsconfig.json
