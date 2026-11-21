@@ -171,8 +171,8 @@ async function main() {
     avatar.setTheme(lightPinned);
     toast(lightPinned ? "Side key: light mode" : "Side key: dark mode");
   };
-  // Herdr chapter: screenshots replace the stick on the stage (onScroll
-  // fades them); the switch picks the light or dark one.
+  // Herdr chapter: screenshots slide in as the stick flies offstage.
+  // The switch picks the dark or light screenshot.
   const shot = $(".stage-shot");
   $$("#herdr .hm-theme [role=tab]").forEach((tab, _, tabs) => tab.addEventListener("click", () => {
     shot.dataset.theme = tab.dataset.theme;
@@ -322,7 +322,7 @@ async function main() {
       enter() { calm({ active: 2, done: 1 }); },
     },
     herdr: {
-      // The stick steps aside for the screenshots (--herdr); hold its pose.
+      // Hold the playground camera pose as the canvas flies offstage.
       pose: { az: 16, el: 10, dist: 180, tx: 0, ty: 0, exposure: 1.05, reveal: 1 },
       enter() { calm({ active: 2, done: 1 }); },
     },
@@ -337,9 +337,11 @@ async function main() {
     b.setAttribute("aria-label", section.querySelector("h1,h2")?.textContent ?? section.getAttribute("aria-label") ?? names[i]);
     b.title = b.getAttribute("aria-label");
     // A pinned scene settles at its end; other chapters at their centre.
-    b.onclick = () => section.classList.contains("scene")
-      ? scrollTo({ top: section.offsetTop + section.offsetHeight - innerHeight, behavior: "smooth" })
-      : section.scrollIntoView({ behavior: "smooth", block: "center" });
+    b.onclick = () => {
+      const behavior = reduceMotion ? "auto" : "smooth";
+      if (section === hero) scrollTo({ top: sceneEnd(), behavior });
+      else section.scrollIntoView({ behavior, block: "center" });
+    };
     li.append(b);
     dots.append(li);
   });
@@ -369,9 +371,10 @@ async function main() {
   const outQuad = (t) => 1 - (1 - t) * (1 - t);
   const SCENE = { move: [0.03, 0.55], shell: [0.3, 0.7], rest: 0.42, stagger: 0.06, fade: 0.22 };
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const scene = { target: 0, shown: -1, offset: { x: 0, y: 0 }, last: 0 };
-  const sceneProgress = () =>
-    clamp01((scrollY - hero.offsetTop) / Math.max(1, hero.offsetHeight - innerHeight));
+  const scene = { target: 0, shown: -1, last: 0 };
+  const sceneLength = () => Math.max(1, hero.offsetHeight - pin.offsetHeight);
+  const sceneEnd = () => hero.offsetTop + sceneLength();
+  const sceneProgress = () => clamp01((scrollY - hero.offsetTop) / sceneLength());
   // The camera pose at progress p (before the hero -> next chapter blend).
   function scenePose(p) {
     const a = introPose();
@@ -383,16 +386,17 @@ async function main() {
     return pose;
   }
   function drawScene(p) {
-    // Heading: from centred under the eyes to its laid-out place (measured
-    // without our own transform; the pinned frame never scrolls meanwhile).
-    const r = heroTitle.getBoundingClientRect();
-    const x = r.left - scene.offset.x, y = r.top - scene.offset.y;
-    const pinTop = pin.getBoundingClientRect().top;
-    const dx = (document.documentElement.clientWidth - r.width) / 2 - x;
-    const dy = pinTop + introScreenBottom(stage) + Math.min(56, innerHeight * 0.06) - y;
+    // Use layout offsets, independent of the wake animation and the exit lift.
     const away = 1 - inOutQuad(span(p, ...SCENE.move));
-    scene.offset = { x: away * dx, y: away * dy };
-    heroTitle.style.transform = `translate(${scene.offset.x.toFixed(2)}px, ${scene.offset.y.toFixed(2)}px)`;
+    if (away > 0) {
+      const x = heroCard.offsetLeft + heroTitle.offsetLeft;
+      const y = heroCard.offsetTop + heroTitle.offsetTop;
+      const dx = (pin.clientWidth - heroTitle.offsetWidth) / 2 - x;
+      const dy = introScreenBottom(stage) + Math.min(56, pin.clientHeight * 0.06) - y;
+      heroTitle.style.transform = `translate(${(away * dx).toFixed(2)}px, ${(away * dy).toFixed(2)}px)`;
+    } else {
+      heroTitle.style.transform = "";
+    }
     // The rest rises in, one element after another.
     heroRest.forEach((el, n) => {
       const u = outQuad(span(p, SCENE.rest + n * SCENE.stagger, SCENE.rest + n * SCENE.stagger + SCENE.fade));
@@ -408,7 +412,7 @@ async function main() {
   // The tip plays the whole opening: land where it has settled.
   tip.addEventListener("click", (event) => {
     event.preventDefault();
-    scrollTo({ top: hero.offsetTop + hero.offsetHeight - innerHeight, behavior: reduceMotion ? "auto" : "smooth" });
+    scrollTo({ top: sceneEnd(), behavior: reduceMotion ? "auto" : "smooth" });
   });
   // Per frame: ease the shown progress toward the scroll (Apple's keyframe
   // `ease`), then draw the copy and pose the camera from the same value.
@@ -497,9 +501,8 @@ async function main() {
     // when its copy starts fading in. Lock it again immediately on leaving.
     const playTop = playground.offsetTop;
     device.setRotationEnabled(mid >= playTop && mid < playTop + playground.offsetHeight);
-    // A pinned scene settles when its pin releases; other chapters at centre.
-    const centres = sections.map((s) => s.offsetTop +
-      (s.classList.contains("scene") ? s.offsetHeight - innerHeight / 2 : s.offsetHeight / 2));
+    // The opening reaches its final pose before the pin releases.
+    const centres = sections.map((s) => s === hero ? sceneEnd() + innerHeight / 2 : s.offsetTop + s.offsetHeight / 2);
     let i = 0;
     while (i < centres.length - 1 && mid > centres[i + 1]) i++;
     const last = i === centres.length - 1;
@@ -515,23 +518,26 @@ async function main() {
     // Copy is scrubbed directly, so the camera follows briskly to stay in step.
     device.setPose(pose, false, inScene ? 0.5 : 0.22);
     stage.classList.toggle("intro", pose.reveal < 0.5);
-    // The Herdr screenshots take over from the stick on the copy's timeline:
-    // the stick fades first, then the screenshot rises in (and the reverse).
-    const away = Math.abs(herdrAt - (i + t));
-    const herdr = 1 - span(away, IN - 0.05, IN + FADE + 0.05);
+    // One reversible timeline from the playground to Herdr: the stick
+    // flies left first, then the screenshot slides in from the right.
+    const intoHerdr = i + t - (herdrAt - 1);
+    const flight = inOutQuad(span(intoHerdr, 0.12, 0.62));
+    const herdr = outQuad(span(intoHerdr, 0.38, 0.80));
+    const stick = reduceMotion ? 1 - flight : 1 - span(flight, 0.68, 1);
+    stage.style.setProperty("--stick-flight", reduceMotion ? "0" : flight.toFixed(3));
+    stage.style.setProperty("--stick", stick.toFixed(3));
     stage.style.setProperty("--herdr", herdr.toFixed(3));
-    stage.style.setProperty("--stick", span(away, IN + FADE, IN + FADE + 0.3).toFixed(3));
+    stage.classList.toggle("herdr-handoff", flight > 0);
     stage.classList.toggle("herdr", herdr > 0.001);
     // Pinned chapters crossfade on the timeline; the opening and the
     // playground flow, fading by distance from their chapter.
     sections.forEach((s, n) => {
       if (s.classList.contains("pinned")) return pinnedCopy(s, n, i + t);
       if (s === hero) {
-        // After its pin releases the opening copy holds its place too (undo
-        // the scroll), then leaves on the same timeline as pinned chapters.
-        const past = Math.max(0, scrollY - (hero.offsetTop + hero.offsetHeight - innerHeight));
+        // The sticky track holds the copy until it's faded out; only the
+        // short exit lift needs to be animated, not the scroll position.
         const u = inOutQuad(span(i === 0 ? t : 1, ...OUT_WIDE));
-        heroCard.style.transform = past > 0 || u > 0 ? `translateY(${(past - LIFT * u).toFixed(2)}px)` : "";
+        heroCard.style.transform = u > 0 ? `translateY(${(-LIFT * u).toFixed(2)}px)` : "";
         heroCard.style.visibility = u < 1 ? "" : "hidden";
         s.style.setProperty("--reveal", (1 - u).toFixed(3));
         return;
