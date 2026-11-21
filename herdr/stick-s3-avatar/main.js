@@ -40,9 +40,11 @@ function windowVisible() {
 /** @typedef {[`#${string}`, [number, number, number, number][]]} Ink */
 /** @typedef {[number, number, number, Ink[], `#${string}`[]?]} Frame */
 /** @typedef {Awaited<ReturnType<typeof connect>>} Socket */
+/** A frame waiting for setImage, with what it was rendered for.
+ *  @typedef {{socket: Socket, epoch: number, background: number, rgb: Uint8Array}} PendingFrame */
 /**
  * Herdr's setImage, in releases that have it (herdrdev/herdr-app#692).
- * @typedef {(path: string, bytes: Uint8Array | null, options?: {width: number, height: number, format: "rgb" | "rgba"}) => Promise<null>} SetImage
+ * @typedef {(path: string, bytes: Uint8Array | null, options?: {width: number, height: number, format: "rgb" | "rgba"}) => Promise<boolean | null>} SetImage
  */
 
 export default class StickAvatar extends View {
@@ -77,11 +79,16 @@ export default class StickAvatar extends View {
   /** Where this copy's frames show (`image(path)`); no file is written there. */
   path = "";
   /** The newest frame not yet handed to Herdr, and whether one is being handed. */
-  /** @type {Uint8Array | null} */
-  nextPixels = null;
+  /** @type {PendingFrame | null} */
+  nextFrame = null;
   showing = false;
-  /** Background of the frame on screen, or -1 for none yet. */
+  /** Bumped whenever queued and in-flight frames stop counting: the connection
+   *  goes, the window hides, the Stick is plugged in. */
+  epoch = 0;
+  /** Background of the frame on screen, or -1 for none (yet). */
   pixelBackground = -1;
+  /** A frame was dropped since the last one shown, so a resent one ("R") is needed. */
+  dropped = false;
 
   /** @param {unknown} _props @param {import('gpui-kit').Context} cx */
   init(_props, cx) {
@@ -145,6 +152,10 @@ export default class StickAvatar extends View {
           return;
         }
         await socket.write(`${token}\n${this.input}\n`);
+        if (this.closed || this.hidden) {
+          socket.close();
+          return;
+        }
         this.lastInput = this.input;
         this.lastWrite = this.lastFrame = Date.now();
         this.socket = socket;
@@ -225,13 +236,18 @@ export default class StickAvatar extends View {
           for (const message of messages) {
             if (message.type === "H") continue;
             redraw = this.updatePresence(message.type === "N") || redraw;
-            if (message.type === "F" && message.background === this.shape[1]) {
-              this.nextPixels = message.rgb;
+            if (message.type === "N") {
+              this.invalidate();
+            } else if (message.background !== this.shape[1]) {
+              // Rendered for a theme the sidebar has left; the next one will match.
+              this.dropped = true;
+            } else if (message.type === "F" || this.dropped || this.pixelBackground !== message.background) {
+              this.nextFrame = { socket, epoch: this.epoch, background: message.background, rgb: message.rgb };
               this.unavailable = false;
             }
           }
           if (redraw) cx.notify();
-          if (this.nextPixels && !this.showing) this.showPixels(cx);
+          if (this.nextFrame && !this.showing) this.showPixels(cx);
         }
       } catch (error) {
         if (socket === this.socket) this.fail(cx, error);
@@ -244,20 +260,37 @@ export default class StickAvatar extends View {
     const setImage = /** @type {SetImage} */ (this.setImage);
     this.showing = true;
     cx.spawn(async (cx) => {
+      /** @type {PendingFrame | null} */
+      let frame = null;
       try {
-        while (this.nextPixels && !this.closed) {
-          const rgb = this.nextPixels;
-          this.nextPixels = null;
-          await setImage(this.path, rgb, { width: FRAME_W, height: FRAME_H, format: "rgb" });
-          this.pixelBackground = this.shape[1];
+        while ((frame = this.nextFrame) && !this.closed) {
+          this.nextFrame = null;
+          if (frame.epoch !== this.epoch) continue;
+          const shown = await setImage(this.path, frame.rgb, { width: FRAME_W, height: FRAME_H, format: "rgb" });
+          // Hidden, unplugged or reconnected meanwhile: it no longer counts.
+          // (False: a newer call for the path got there first.)
+          if (frame.epoch !== this.epoch || shown === false) continue;
+          this.pixelBackground = frame.background;
+          this.dropped = false;
           cx.notify();
         }
       } catch (error) {
-        this.fail(cx, error);
+        // A Herdr whose setImage can't take raw pixels: draw rectangles instead.
+        if (frame && frame.socket === this.socket && !this.closed) {
+          this.setImage = null;
+          this.fail(cx, error);
+        }
       } finally {
         this.showing = false;
       }
     });
+  }
+
+  // Frames queued or being handed over stop counting, and none is shown.
+  invalidate() {
+    this.epoch++;
+    this.nextFrame = null;
+    this.pixelBackground = -1;
   }
 
   /** @param {string} output @param {Frame | null} frame */
@@ -311,6 +344,7 @@ export default class StickAvatar extends View {
     const socket = this.socket;
     this.socket = null;
     socket?.close();
+    this.invalidate();
   }
 
   close() {

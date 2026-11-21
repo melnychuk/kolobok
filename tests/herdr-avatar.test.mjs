@@ -260,13 +260,14 @@ test("pixel messages survive any split and join of socket reads", async () => {
   const render = await makeRenderer(bytes);
   const rgb = Uint8Array.from(render(control({ active: 1, done: 1, focused: true, pixels: true }), 3));
   const stream = Buffer.concat([encodeMessage("F", 0x101114, rgb), encodeMessage("H"), encodeMessage("N"),
-    encodeMessage("F", 0xf4f6f9, rgb.map((c) => 255 - c))]);
+    encodeMessage("F", 0xf4f6f9, rgb.map((c) => 255 - c)), encodeMessage("R", 0x101114, rgb)]);
   for (const size of [1, 3, 4, 5, 1000, FRAME_BYTES + 7, stream.length]) {
     const reader = new MessageReader();
     const got = [];
     for (let at = 0; at < stream.length; at += size) got.push(...reader.push(stream.subarray(at, at + size)));
-    assert.deepEqual(got.map((m) => m.type), ["F", "H", "N", "F"], `reads of ${size}`);
-    const [first, , , last] = /** @type {{type: "F", background: number, rgb: Uint8Array}[]} */ (got);
+    assert.deepEqual(got.map((m) => m.type), ["F", "H", "N", "F", "R"], `reads of ${size}`);
+    const [first, , , last, again] = /** @type {{type: "F", background: number, rgb: Uint8Array}[]} */ (got);
+    assert.ok(Buffer.from(again.rgb).equals(Buffer.from(rgb)), "a resent frame carries the whole frame");
     assert.equal(first.background, 0x101114);
     assert.ok(Buffer.from(first.rgb).equals(Buffer.from(rgb)));
     assert.equal(last.background, 0xf4f6f9);
@@ -275,7 +276,9 @@ test("pixel messages survive any split and join of socket reads", async () => {
   }
   assert.throws(() => new MessageReader().push(Uint8Array.of(0, 0, 0, 0)), /0 bytes/);
   assert.throws(() => new MessageReader().push(Uint8Array.of(1, 0, 0, 0, 90)), /unknown type/);
-  assert.throws(() => new MessageReader().push(Uint8Array.of(5, 0, 0, 0, 70, 0, 0, 0, 0)), /wrong size/);
+  assert.throws(() => new MessageReader().push(Uint8Array.of(5, 0, 0, 0, 70, 0, 0, 0, 0)), /5 bytes/);
+  const short = Buffer.alloc(9); short.writeUInt32LE(1, 0); short[4] = 70;
+  assert.throws(() => new MessageReader().push(short), /wrong size/);
 });
 
 test("pixel mode streams the Stick's own frames, with presence and heartbeats", async () => {
@@ -294,9 +297,22 @@ test("pixel mode streams the Stick's own frames, with presence and heartbeats", 
     const reader = new MessageReader();
     /** @type {import("../herdr/stick-s3-avatar/frames.js").Message[]} */
     const messages = [];
-    socket.on("data", (/** @type {Buffer} */ chunk) => messages.push(...reader.push(chunk)));
+    let received = 0;
+    /** @type {unknown[]} */
+    const errors = [];
+    socket.on("data", (/** @type {Buffer} */ chunk) => {
+      received += chunk.length;
+      try { messages.push(...reader.push(chunk)); } catch (error) { errors.push(error); }
+    });
     const input = { active: 1, blocked: 1, focused: false, background: 0x101114, width: 120, pixels: true };
-    socket.write(`${token}\n${JSON.stringify(input)}\n`);
+    // The token and the first input can arrive in separate reads, the input split too.
+    socket.write(`${token}\n`);
+    await delay(400);
+    assert.equal(received, 0, "nothing is sent before the first input");
+    const line = `${JSON.stringify(input)}\n`;
+    socket.write(line.slice(0, 10));
+    await delay(50);
+    socket.write(line.slice(10));
     const waitFor = async (/** @type {string} */ type) => {
       for (let i = 0; i < 80; i++) {
         const last = messages.findLast((m) => m.type !== "H");
@@ -314,6 +330,8 @@ test("pixel mode streams the Stick's own frames, with presence and heartbeats", 
       expected = site(control(input), 1);
     }
     assert.ok(Buffer.from(expected).equals(Buffer.from(frame.rgb)), "a frame from the site's sequence");
+    // A later input can't switch the connection to JSON lines.
+    socket.write(`${JSON.stringify({ ...input, pixels: false })}\n`);
     await writeFile(presence, "1");
     await waitFor("N");
     const count = messages.length;
@@ -322,6 +340,7 @@ test("pixel mode streams the Stick's own frames, with presence and heartbeats", 
     assert.ok(messages.slice(count).every((m) => m.type === "H"), "and nothing else");
     await writeFile(presence, "0");
     await waitFor("F");
+    assert.deepEqual(errors, [], "every message parses");
     socket.end();
     await once(socket, "close");
   } finally {

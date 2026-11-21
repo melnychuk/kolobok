@@ -100,11 +100,12 @@ export function control(input) {
 // (3 bytes) + RGB frame, "N" (Stick plugged in), or "H" (heartbeat).
 /** @param {"F" | "N" | "H"} type @param {number} [background] @param {Uint8Array} [rgb] */
 export function encodeMessage(type, background = 0, rgb = undefined) {
-  const size = type === "F" ? 4 + SOURCE_W * SOURCE_H * 3 : 1;
+  const frame = type === "F" || type === "R";
+  const size = frame ? 4 + SOURCE_W * SOURCE_H * 3 : 1;
   const out = Buffer.alloc(4 + size);
   out.writeUInt32LE(size, 0);
   out[4] = type.charCodeAt(0);
-  if (type === "F") {
+  if (frame) {
     if (!rgb || rgb.length !== SOURCE_W * SOURCE_H * 3) throw new Error("A frame needs the whole RGB framebuffer");
     out[5] = (background >> 16) & 255;
     out[6] = (background >> 8) & 255;
@@ -299,11 +300,14 @@ async function worker(serial) {
   const started = performance.now();
   let input = control({});
   let lastInput = started;
+  /** The authenticated connection, and the same once its first input arrived. */
+  /** @type {import("node:net").Socket | null} */
+  let viewer = null;
   /** @type {import("node:net").Socket | null} */
   let client = null;
   let closed = false;
   const server = createServer((socket) => {
-    if (client) {
+    if (viewer) {
       socket.destroy();
       return;
     }
@@ -313,7 +317,7 @@ async function worker(serial) {
     socket.setNoDelay(true).setEncoding("utf8").on("error", () => {});
     socket.on("close", () => {
       clearTimeout(timer);
-      if (socket === client) closed = true;
+      if (socket === viewer) closed = true;
     });
     socket.on("data", (/** @type {string} */ chunk) => {
       text += chunk;
@@ -321,17 +325,24 @@ async function worker(serial) {
         const line = text.slice(0, end);
         text = text.slice(end + 1);
         if (!trusted) {
-          if (client || !sameToken(line, token)) {
+          if (viewer || !sameToken(line, token)) {
             socket.destroy();
             return;
           }
           trusted = true;
-          clearTimeout(timer);
-          client = socket;
+          viewer = socket;
           server.close(); // One viewer per worker; a new view launches its own.
         } else {
           // Keep the last good input if a line is ever malformed.
-          try { input = control(JSON.parse(line)); } catch { /* Ignore. */ }
+          let next;
+          try { next = control(JSON.parse(line)); } catch { continue; }
+          // The first input picks the framing for good; nothing is sent before it.
+          if (client) next.pixels = input.pixels;
+          input = next;
+          if (!client) {
+            clearTimeout(timer);
+            client = socket;
+          }
         }
         lastInput = performance.now();
       }
@@ -356,6 +367,8 @@ async function worker(serial) {
   /** @type {Buffer | null} */
   let lastRaw = null;
   let lastBackground = -1;
+  let lastFull = 0;
+  let blocked = false;
   try {
     for (;;) {
       // The mod sends its input at least every second; silence means it is gone.
@@ -379,7 +392,7 @@ async function worker(serial) {
       const now = performance.now();
       const steps = Math.min(4, Math.floor((now - last) / FRAME_MS));
       let visual = "null";
-      /** @type {Buffer | null} */
+      /** The frame in WASM memory, which the next frame reuses. @type {Uint8Array | null} */
       let raw = null;
       if (connected) {
         render = null;
@@ -395,7 +408,7 @@ async function worker(serial) {
         last = now - ((now - last) % FRAME_MS);
         const rgb = render(input, steps);
         if (input.pixels) {
-          raw = Buffer.from(rgb); // Out of WASM memory, which the next frame reuses.
+          raw = rgb;
           visual = "frame";
         } else {
           const shown = displayFrame(rgb, input, render.backdrop());
@@ -408,15 +421,28 @@ async function worker(serial) {
         continue;
       }
       // Resend an unchanged frame twice a second as a heartbeat (pixels: a
-      // short "H"). Skip frames rather than queue them if the mod falls behind.
+      // short "H", and every two seconds the whole frame again as "R", so a
+      // frame the mod had to drop doesn't stay missing). Skip frames rather
+      // than queue them if the mod falls behind.
       if (input.pixels) {
-        const changed = raw
-          ? !(lastRaw && lastBackground === input.background && lastRaw.equals(raw))
-          : lastVisual !== "null";
-        if ((changed || now - lastSequence > 500) && socket.writableLength < 2 * FRAME_MESSAGE) {
-          socket.write(!changed ? encodeMessage("H") : raw ? encodeMessage("F", input.background, raw) : encodeMessage("N"));
+        const same = raw
+          ? lastRaw !== null && lastBackground === input.background && lastRaw.equals(raw)
+          : lastVisual === "null";
+        /** @type {Buffer | null} */
+        let message = null;
+        if (!same) message = raw ? encodeMessage("F", input.background, raw) : encodeMessage("N");
+        else if (raw && now - lastFull > 2000) message = encodeMessage("R", input.background, raw);
+        else if (now - lastSequence > 500) message = encodeMessage("H");
+        if (message && !blocked && socket.writableLength < 2 * FRAME_MESSAGE) {
+          if (!socket.write(message)) {
+            blocked = true;
+            socket.once("drain", () => { blocked = false; });
+          }
+          if (message.length > 5) {
+            lastRaw = raw ? message.subarray(8) : null;
+            lastFull = now;
+          }
           lastVisual = visual;
-          lastRaw = raw;
           lastBackground = input.background;
           lastSequence = now;
         }
