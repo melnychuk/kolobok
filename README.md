@@ -26,7 +26,7 @@ Live demo with the real firmware renderer compiled to WebAssembly:
 | `site/` | The product page; `scripts/build-site-wasm.sh` compiles the renderer for it. |
 | `tests/` | Native C++ and Python tests, plus the native preview renderer. |
 | `experiments/qemu-sticks3/` | QEMU peripheral prototype and the USB/LCD transport timing model. |
-| `experiments/avatar-widget/` | Shared compositor for the site and the Herdr avatar artwork. |
+| `experiments/avatar-widget/` | The desktop avatar: the Stick's own frame code (`firmware/avatar_frame.h`) for the site and the Herdr widget. |
 | `herdr/` | Installable sidebar avatar for Herdr Desktop. |
 | `docs/` | Design notes, bridge guides and performance research. |
 

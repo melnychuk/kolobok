@@ -5,6 +5,9 @@
 #include <string>
 #include <vector>
 #include <initializer_list>
+#define main native_preview_main
+#include "preview_avatar.cpp"
+#undef main
 #define STICK_AVATAR_WIDGET_NO_MAIN
 #include "../experiments/avatar-widget/main.cpp"
 
@@ -298,19 +301,19 @@ static void splitCompletions() {
  }
  // Header widget: both orders play the transfer; a lone half is shown late.
  for(int order=0;order<3;++order) {
-  HeaderAvatar avatar;auto& p=avatar.preview;
+  HeaderAvatar avatar;auto& p=avatar.stick;
   for(uint32_t ms=0;ms<8000;ms+=33)avatar.frame(ms,2,0,0,false,true);
   bool transfer=false;
   for(uint32_t ms=8000;ms<16000;ms+=33) {
    const bool second=ms>=10000&&order<2;
    const int active=order==1&&!second?2:1,done=order==0&&!second?0:order==2?0:1;
    avatar.frame(ms,active,0,done,false,true);
-   transfer=transfer||p.transfer.busy(ms);
-   if(ms<10000&&order<2)assert(p.shownDone==0&&p.shownActive==2&&p.done==0&&p.active==2);
+   transfer=transfer||p.taskTransfer.busy(ms);
+   if(ms<10000&&order<2)assert(p.shownDone==0&&p.shownActive==2&&p.doneCount==0&&p.activeCount==2);
    if(order==2) {
     // Never completed: hold the lower count for the window, then show it.
-    if(ms<8000+task_cues::CompletionPairing::kWindow)assert(p.active==2);
-    if(ms>=8000+task_cues::CompletionPairing::kWindow+33)assert(p.active==1&&p.shownActive==1);
+    if(ms<8000+task_cues::CompletionPairing::kWindow)assert(p.activeCount==2);
+    if(ms>=8000+task_cues::CompletionPairing::kWindow+33)assert(p.activeCount==1&&p.shownActive==1);
    }
   }
   assert(transfer==(order<2));
@@ -318,9 +321,9 @@ static void splitCompletions() {
  // A request in between releases the held half immediately, without a cue.
  HeaderAvatar r;
  for(uint32_t ms=0;ms<8000;ms+=33)r.frame(ms,2,0,0,false,true);
- r.frame(8000,1,0,0,false,true);assert(r.preview.active==2);
- r.frame(8033,2,1,0,false,true);assert(r.preview.active==2&&!r.preview.pairing.pending);
- r.frame(8066,1,1,1,false,true);assert(!r.preview.transfer.busy(8066));
+ r.frame(8000,1,0,0,false,true);assert(r.stick.activeCount==2);
+ r.frame(8033,2,1,0,false,true);assert(r.stick.activeCount==2&&!r.stick.completionPairing.pending);
+ r.frame(8066,1,1,1,false,true);assert(!r.stick.taskTransfer.busy(8066));
 }
 
 static void pairedArrivalRoom() {
@@ -379,16 +382,16 @@ static void headerCompositor() {
  HeaderAvatar avatar;
  for(uint32_t ms=0;ms<12000;ms+=33) {
   avatar.frame(ms,1,0,0,false,true);
-  assert(!avatar.preview.arrival.busy(ms)&&!avatar.preview.transfer.busy(ms));
+  assert(!avatar.stick.taskArrival.busy(ms)&&!avatar.stick.taskTransfer.busy(ms));
  }
  avatar.frame(12000,2,0,0,false,true);
- assert(avatar.preview.arrival.busy(12000)&&!avatar.preview.reaction.active);
+ assert(avatar.stick.taskArrival.busy(12000)&&!avatar.stick.countReaction.active);
  for(uint32_t ms=12033;ms<16000;ms+=33)avatar.frame(ms,2,0,0,false,true);
- assert(!avatar.preview.arrival.busy(16000)&&avatar.preview.scene.away==0);
+ assert(!avatar.stick.taskArrival.busy(16000)&&avatar.stick.scene.away==0);
  avatar.frame(16000,1,0,1,false,true);
- auto& p=avatar.preview;
- assert(p.transfer.busy(16000)&&!p.flight.busy(16000)&&!p.reaction.active);
- assert(p.done==1&&p.active==1&&p.shownDone==0&&p.shownActive==2);
+ auto& p=avatar.stick;
+ assert(p.taskTransfer.busy(16000)&&!p.counterFlight.busy(16000)&&!p.countReaction.active);
+ assert(p.doneCount==1&&p.activeCount==1&&p.shownDone==0&&p.shownActive==2);
  bool hidden=false;
  for(uint32_t ms=16033;ms<16000+Transfer::kEnd+2000;ms+=33) {
   avatar.frame(ms,1,0,1,false,true);
@@ -397,17 +400,19 @@ static void headerCompositor() {
   if(t>=Transfer::kHome) assert(p.scene.away==0);
   if(t>=Transfer::kCover)assert(p.shownDone==1&&p.shownActive==1);
  }
- assert(hidden&&!p.transfer.busy(16000+Transfer::kEnd+2000));
- assert(avatar_behavior::pending(16000+Transfer::kEnd+100,avatar.celebrateUntil));
- // Requests and listening returns never start cues.
- avatar.frame(30000,2,1,1,false,true);assert(!p.arrival.busy(30000));
- avatar.frame(31000,2,0,1,false,true);assert(!p.arrival.busy(31000));
- avatar.frame(32000,2,0,1,true,true);avatar.frame(33000,3,0,1,false,true);
- assert(!p.arrival.busy(33000));
- avatar.frame(34000,4,0,1,false,true);assert(p.arrival.busy(34000));
+ assert(hidden&&!p.taskTransfer.busy(16000+Transfer::kEnd+2000));
+ assert(avatar_behavior::pending(16000+Transfer::kEnd+100,avatar.stick.celebrateUntil));
+ // Requests never start cues, and a count that changes during dictation is a
+ // baseline: as on the device, it does not play when dictation ends.
+ avatar.frame(30000,2,1,1,false,true);assert(!p.taskArrival.busy(30000));
+ avatar.frame(31000,2,0,1,false,true);assert(!p.taskArrival.busy(31000));
+ avatar.frame(32000,2,0,1,true,true);avatar.frame(32500,3,0,1,true,true);
+ avatar.frame(33000,3,0,1,false,true);
+ assert(!p.taskArrival.busy(33000));
+ avatar.frame(34000,4,0,1,false,true);assert(p.taskArrival.busy(34000));
  // Offline cancels without replay; recovery is a baseline.
- avatar.frame(34100,4,0,1,false,false);assert(!p.arrival.busy(34100));
- avatar.frame(35000,5,0,1,false,true);assert(!p.arrival.busy(35000));
+ avatar.frame(34100,4,0,1,false,false);assert(!p.taskArrival.busy(34100));
+ avatar.frame(35000,5,0,1,false,true);assert(!p.taskArrival.busy(35000));
 }
 
 int main() {

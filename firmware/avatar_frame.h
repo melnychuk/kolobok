@@ -110,10 +110,15 @@ struct Avatar {
   bool voiceRecording = false;  // Dictation is being captured (the listening face).
   bool unplugged = false;  // No USB host: no startle while unplugged.
   bool drowsy = false;  // USB says nobody's there and no button woke it: doze.
-  long (*random)(long) = nullptr;  // random(n): 0 .. n-1.
+  // random(n): 0 .. n-1. Without one (desktop), a seeded generator keeps
+  // frames reproducible.
+  long (*random)(long) = nullptr;
+  uint32_t randomState = 0x6d2b79f5u;
   float pendingStartle = 0;  // Detector output, consumed (or dropped) by the next frame.
+  int startleSide = 0;  // -1 or 1 to choose the startle's direction; 0 picks one at random.
   // Loudness of the dictation being captured (10ms levels only).
   listen_wave::Envelope voiceLevel;
+  float voiceLevelOverride = -1;  // A level to use instead (no microphone); -1: voiceLevel.
 
   bool lightMode = false;
   const Palette* palette;
@@ -161,6 +166,9 @@ struct Avatar {
   uint32_t lastTaskAt = 0;
 
   Indicators ui;
+  // The counts on screen: real counts held back while a cue plays.
+  int shownDone = 0;
+  int shownActive = 0;
   // The four repeating status rows under the face, as RGB565.
   uint16_t statusRows[4][kScreenWidth] = {};
   status_background::RowCache statusCache;
@@ -173,6 +181,13 @@ struct Avatar {
         face(Face::offline) {}
   Avatar(const Avatar&) = delete;  // The scene points at its own surface.
   Avatar& operator=(const Avatar&) = delete;
+
+  long nextRandom(long limit) {
+    if (random) return random(limit);
+    uint32_t& x = randomState;
+    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+    return static_cast<long>(x % static_cast<uint32_t>(limit));
+  }
 
   void setTheme(bool light) {
     lightMode = light;
@@ -240,6 +255,7 @@ struct Avatar {
     const int shownDone=stepOver.displayCount(now,
         taskTransfer.displayCount(now,true,counterFlight.displayCount(now,true,doneCount)));
     const int shownActive=taskTransfer.displayCount(now,false,counterFlight.displayCount(now,false,activeCount));
+    this->shownDone=shownDone;this->shownActive=shownActive;
     // Staged cues replace count pops, which would compete with them.
     if(sorting) {
       ui.done.pop.observed=shownDone;ui.active.pop.observed=shownActive;
@@ -270,7 +286,7 @@ struct Avatar {
     startle.update(now,!allowed);
     if(pendingStartle>0) {
       if(allowed&&!startle.active) {
-        startle.notify(now,pendingStartle,random(2)?1:-1);
+        startle.notify(now,pendingStartle,startleSide?startleSide:(nextRandom(2)?1:-1));
         lastTaskAt=now;  // Return to idle sleep after the ordinary four-second hold.
         surface.kick(0,.55f+.45f*startle.strength);
       }
@@ -301,7 +317,7 @@ struct Avatar {
     const auto targets=avatar_behavior::targets(120+ui.offset+scene.counterShift,avatar_scene::eyeBaseline(ui.corners,ui.alert,0),
         counterX(0),counterX(1),counterY(),doneCount>0,activeCount>0);
     actor.calm=!avatar_behavior::pending(now,celebrateUntil);
-    const auto performance=director.step(face,actor,now,static_cast<uint32_t>(random(0x7fffffff)),
+    const auto performance=director.step(face,actor,now,static_cast<uint32_t>(nextRandom(0x7fffffff)),
         counterChecks.busy(now),targets,buttonCue.active||staged||startle.active);
     actingEyes=performance.eyes;actingBody=performance.body;
     const auto authoredEyes=actingEyes;
@@ -324,7 +340,7 @@ struct Avatar {
     actingBody=startle.apply(actingBody,now,true);
     actingEyes=startle.apply(actingEyes,now);
     requestHops.update(now,face==Face::waiting,!buttonCue.active&&!startle.active,
-                       static_cast<uint32_t>(random(0x7fffffff)));
+                       static_cast<uint32_t>(nextRandom(0x7fffffff)));
     if(face!=Face::listening&&face!=Face::sleeping&&face!=Face::offline) {
       actingBody=countReaction.body(actingBody,now,face==Face::waiting);
       actingEyes=countReaction.apply(actingEyes,now,face==Face::waiting);
@@ -420,7 +436,8 @@ struct Avatar {
     scene.hopStretch=requestHops.stretch(now)*ui.alert;
     scene.eyes=actingEyes; scene.body=actingBody; scene.flowClock=flowClock;
     listenWave.update(seconds, now, face == Face::listening,
-                      face == Face::listening ? voiceLevel.level(now) : 0);
+                      face == Face::listening ?
+                          (voiceLevelOverride >= 0 ? voiceLevelOverride : voiceLevel.level(now)) : 0);
     avatar_scene::setWave(scene, listenWave);
     scene.thinking=face==Face::working;
     scene.surface=&surface;

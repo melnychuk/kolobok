@@ -3,6 +3,9 @@
 #include <math.h>
 #include <initializer_list>
 #include "../experiments/qemu-sticks3/measured_frame_envelopes.h"
+#define main native_preview_main
+#include "preview_avatar.cpp"
+#undef main
 #define STICK_AVATAR_WIDGET_NO_MAIN
 #include "../experiments/avatar-widget/main.cpp"
 
@@ -87,20 +90,20 @@ int main() {
   const bool doneOnly=side==kActive;
   for(int frame=0;frame<170;++frame,now+=33)
    avatar.frame(now,doneOnly?0:count,0,doneOnly?count:0,false,true);
-  const auto& scene=avatar.preview.scene;
+  const auto& scene=avatar.stick.scene;
   assert(side*scene.counterShift>0);
   assert(scene.counterScale==(counter_space::length(count)>=5?.94f:1.0f));
   avatar_scene::Mask mask;avatar_scene::buildMask(scene,mask);
   for(int y=0;y<135;++y)for(int dx=0;dx<16;++dx)
    assert(mask.baseCoverage(side>0?239-dx:dx,y)==1);
-  assert(avatar.preview.shownDone==(doneOnly?count:0));
-  assert(avatar.preview.shownActive==(doneOnly?0:count));
+  assert(avatar.stick.shownDone==(doneOnly?count:0));
+  assert(avatar.stick.shownActive==(doneOnly?0:count));
  }
  for(int frame=0;frame<170;++frame,now+=33)avatar.frame(now,18,0,18,false,true);
- assert(avatar.preview.scene.counterShift==0&&avatar.preview.scene.counterScale==1);
+ assert(avatar.stick.scene.counterShift==0&&avatar.stick.scene.counterScale==1);
  for(int frame=0;frame<170;++frame,now+=33)avatar.frame(now,18,1,18,false,true);
- assert(avatar.preview.scene.counterShift==0&&avatar.preview.scene.counterScale==1);
+ assert(avatar.stick.scene.counterShift==0&&avatar.stick.scene.counterScale==1);
  for(int frame=0;frame<170;++frame,now+=33)avatar.frame(now,8,0,0,false,true);
- assert(avatar.preview.scene.counterScale==1);
+ assert(avatar.stick.scene.counterScale==1);
  return 0;
 }

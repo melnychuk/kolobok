@@ -1,5 +1,8 @@
 // Full command-driven compositor regression, using synthetic aggregates only.
 #include <assert.h>
+#define main native_preview_main
+#include "preview_avatar.cpp"
+#undef main
 #define STICK_AVATAR_WIDGET_NO_MAIN
 #include "../experiments/avatar-widget/main.cpp"
 int main() {
@@ -7,29 +10,29 @@ int main() {
  HeaderAvatar avatar;
  for(uint32_t ms=0;ms<20000;ms+=33) {
   avatar.frame(ms,3,0,2,false,true);
-  assert(!avatar.preview.flight.busy(ms)); // no idle timer or synthetic fixture
+  assert(!avatar.stick.counterFlight.busy(ms)); // no idle timer or synthetic fixture
  }
  const uint32_t start=20000;
  avatar.frame(start,2,0,3,false,true);
- assert(avatar.preview.flight.busy(start));
- assert(avatar.preview.done==3&&avatar.preview.active==2); // real data updates immediately
- assert(avatar.preview.shownDone==2&&avatar.preview.shownActive==3);
+ assert(avatar.stick.counterFlight.busy(start));
+ assert(avatar.stick.doneCount==3&&avatar.stick.activeCount==2); // real data updates immediately
+ assert(avatar.stick.shownDone==2&&avatar.stick.shownActive==3);
  const uint32_t swap=avatar_interaction::CounterFlight::kSwap;
  for(uint32_t ms=start+33;ms<start+swap;ms+=33) {
   avatar.frame(ms,2,0,3,false,true);
-  assert(avatar.preview.shownDone==2&&avatar.preview.shownActive==3);
-  assert(!avatar.preview.donePop.running&&!avatar.preview.activePop.running);
+  assert(avatar.stick.shownDone==2&&avatar.stick.shownActive==3);
+  assert(!avatar.stick.ui.done.pop.running&&!avatar.stick.ui.active.pop.running);
  }
  avatar.frame(start+swap,2,0,3,false,true);
- assert(avatar.preview.shownDone==3&&avatar.preview.shownActive==2);
- auto gathered=avatar.preview.flight.offset(start+swap,true,24,216,40,40);
+ assert(avatar.stick.shownDone==3&&avatar.stick.shownActive==2);
+ auto gathered=avatar.stick.counterFlight.offset(start+swap,true,24,216,40,40);
  assert(gathered.y==-avatar_interaction::CounterFlight::kCarry);
  // Both blobs hold their numerals: the drawn body overlaps each label's top.
- assert(avatar.preview.scene.hands.reach[0]==1&&avatar.preview.scene.hands.reach[1]==1);
+ assert(avatar.stick.scene.hands.reach[0]==1&&avatar.stick.scene.hands.reach[1]==1);
  {
-  avatar_scene::Mask mask;avatar_scene::buildMask(avatar.preview.scene,mask);
+  avatar_scene::Mask mask;avatar_scene::buildMask(avatar.stick.scene,mask);
   for(int i=0;i<2;++i) {
-   const auto& hands=avatar.preview.scene.hands;
+   const auto& hands=avatar.stick.scene.hands;
    const int x=static_cast<int>(hands.x[i]),y=static_cast<int>(hands.y[i]);
    assert(mask.coverage(x,y-2)==1);
    assert(mask.coverage(x,y+3)==0); // only slightly: the label stays readable
@@ -37,20 +40,20 @@ int main() {
  }
  const uint32_t end=start+avatar_interaction::CounterFlight::kEnd+150;
  for(uint32_t ms=start+swap+33;ms<end;ms+=33)avatar.frame(ms,2,0,3,false,true);
- assert(!avatar.preview.flight.busy(end));
- assert(avatar.preview.scene.hands.reach[0]==0&&avatar.preview.scene.hands.reach[1]==0);
- assert(avatar.preview.shownDone==3&&avatar.preview.shownActive==2);
- assert(!avatar.preview.donePop.running&&!avatar.preview.activePop.running);
+ assert(!avatar.stick.counterFlight.busy(end));
+ assert(avatar.stick.scene.hands.reach[0]==0&&avatar.stick.scene.hands.reach[1]==0);
+ assert(avatar.stick.shownDone==3&&avatar.stick.shownActive==2);
+ assert(!avatar.stick.ui.done.pop.running&&!avatar.stick.ui.active.pop.running);
  // The last active numeral vanishes at the apex, not its blue backdrop.
  HeaderAvatar last;
  for(uint32_t ms=0;ms<5000;ms+=33)last.frame(ms,1,0,1,false,true);
  const uint32_t pickup=5000;
  last.frame(pickup,0,0,2,false,true);
- assert(last.preview.flight.busy(pickup));
+ assert(last.stick.counterFlight.busy(pickup));
  bool covered=false,released=false;
  for(uint32_t ms=pickup+33;ms<pickup+6000;ms+=33) {
   last.frame(ms,0,0,2,false,true);
-  auto& preview=last.preview;
+  auto& preview=last.stick;
   const float singleOffset=stripWidth(preview.shownDone)/2.0f;
   // Done only: the face slides over the (now empty) active side.
   covered=covered||(preview.scene.corners<.05f&&
@@ -78,26 +81,29 @@ int main() {
  departure.update(1,1,false,true,true,false,false,true,.033f);
  assert(!departure.held[1]&&departure.presence[1]==1);
  // Requests suppress an edge and cannot replay it later.
- avatar.frame(24000,1,1,4,false,true);assert(!avatar.preview.flight.busy(24000));
- avatar.frame(26000,1,0,4,false,true);assert(!avatar.preview.flight.busy(26000));
- // Offline and recording cancel staging and reveal current data, never stale counts.
- avatar.frame(28000,0,0,5,false,true);assert(avatar.preview.flight.busy(28000));
- avatar.frame(28100,0,0,5,true,true);assert(!avatar.preview.flight.busy(28100));
- assert(avatar.preview.shownDone==0&&avatar.preview.shownActive==0);
- avatar.frame(29000,3,0,2,false,false);assert(!avatar.preview.flight.busy(29000));
- avatar.frame(30000,2,0,3,false,true);assert(!avatar.preview.flight.busy(30000));
- assert(!avatar.preview.reaction.active);
- assert(avatar.preview.director.beat==avatar_behavior::Beat::reconnect);
- assert(!avatar_behavior::pending(30000,avatar.celebrateUntil));
+ avatar.frame(24000,1,1,4,false,true);assert(!avatar.stick.counterFlight.busy(24000));
+ avatar.frame(26000,1,0,4,false,true);assert(!avatar.stick.counterFlight.busy(26000));
+ // Offline and recording cancel staging and reveal current data, never stale
+ // counts. As on the device, recording keeps the real counts (hidden) rather
+ // than zeroing them.
+ avatar.frame(28000,0,0,5,false,true);assert(avatar.stick.counterFlight.busy(28000));
+ avatar.frame(28100,0,0,5,true,true);assert(!avatar.stick.counterFlight.busy(28100));
+ avatar.frame(28133,0,0,5,true,true);
+ assert(avatar.stick.shownDone==5&&avatar.stick.shownActive==0);
+ avatar.frame(29000,3,0,2,false,false);assert(!avatar.stick.counterFlight.busy(29000));
+ avatar.frame(30000,2,0,3,false,true);assert(!avatar.stick.counterFlight.busy(30000));
+ assert(!avatar.stick.countReaction.active);
+ assert(avatar.stick.director.beat==avatar_behavior::Beat::reconnect);
+ assert(!avatar_behavior::pending(30000,avatar.stick.celebrateUntil));
  // A listening interval consumes the aggregate baseline, not the unread work.
  avatar.frame(31000,2,0,3,true,true);
  avatar.frame(32000,2,0,3,false,true);
- assert(!avatar.preview.reaction.active&&!avatar.preview.flight.busy(32000));
- assert(!avatar_behavior::pending(32000,avatar.celebrateUntil));
+ assert(!avatar.stick.countReaction.active&&!avatar.stick.counterFlight.busy(32000));
+ assert(!avatar_behavior::pending(32000,avatar.stick.celebrateUntil));
  // Fresh completion while work remains: celebrate once, then return to work.
  avatar.frame(33000,2,0,4,false,true);
- assert(avatar.preview.liveMode==avatar_behavior::Mode::finished);
+ assert(avatar.stick.face==avatar_behavior::Mode::finished);
  avatar.frame(37000,2,0,4,false,true);
- assert(avatar.preview.liveMode==avatar_behavior::Mode::working);
+ assert(avatar.stick.face==avatar_behavior::Mode::working);
  return 0;
 }

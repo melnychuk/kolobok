@@ -1,10 +1,10 @@
 # Product site
 
 A static, playful product page with an interactive 3D StickS3. The screen is
-not a recording: `avatar.wasm` is the header-widget compositor
-(`experiments/avatar-widget/main.cpp`) and every shared `firmware/*.h` kernel,
-compiled to WebAssembly by `scripts/build-site-wasm.sh`. Wrapper:
-`site/wasm/avatar_wasm.cpp` (no firmware source changes).
+not a recording: `avatar.wasm` runs the Stick's own frame code
+(`firmware/avatar_frame.h`, through the desktop avatar in
+`experiments/avatar-widget/main.cpp`), compiled to WebAssembly by
+`scripts/build-site-wasm.sh`. Wrapper: `site/wasm/avatar_wasm.cpp`.
 
 ```sh
 # Rebuild the renderer after changing firmware headers (needs wasi-sdk 25)

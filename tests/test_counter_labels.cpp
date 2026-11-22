@@ -2,6 +2,9 @@
 #include <assert.h>
 #include <initializer_list>
 #include "../experiments/qemu-sticks3/measured_frame_envelopes.h"
+#define main native_preview_main
+#include "preview_avatar.cpp"
+#undef main
 #define STICK_AVATAR_WIDGET_NO_MAIN
 #include "../experiments/avatar-widget/main.cpp"
 
@@ -91,15 +94,15 @@ int main() {
  // Actual shared header compositor, including short -> long and side -> paired.
  HeaderAvatar avatar;uint32_t now=0;
  for(int frame=0;frame<170;++frame,now+=33)avatar.frame(now,0,0,18,false,true);
- assert(avatar.preview.scene.counterScale==.94f);
+ assert(avatar.stick.scene.counterScale==.94f);
  for(int frame=0;frame<170;++frame,now+=33)avatar.frame(now,18,0,18,false,true);
- assert(avatar.preview.scene.counterScale==1&&avatar.preview.scene.counterShift==0);
- assert(avatar.preview.counterLabels.labels[0].index==0&&avatar.preview.counterLabels.labels[1].index==0);
+ assert(avatar.stick.scene.counterScale==1&&avatar.stick.scene.counterShift==0);
+ assert(avatar.stick.counterLabels.labels[0].index==0&&avatar.stick.counterLabels.labels[1].index==0);
  for(int frame=0;frame<170;++frame,now+=33)avatar.frame(now,88,0,1,false,true);
- assert(avatar.preview.counterLabels.labels[0].index==0&&avatar.preview.counterLabels.labels[1].index==0);
- assert(avatar.preview.scene.counterScale==1&&avatar.preview.scene.counterShift==0);
+ assert(avatar.stick.counterLabels.labels[0].index==0&&avatar.stick.counterLabels.labels[1].index==0);
+ assert(avatar.stick.scene.counterScale==1&&avatar.stick.scene.counterShift==0);
  for(int frame=0;frame<170;++frame,now+=33)avatar.frame(now,88,1,0,false,true);
- assert(avatar.preview.counterLabels.labels[0].width==0);
- assert(avatar.preview.counterLabels.labels[1].index==0); // hidden count reserves no bottom space
+ assert(avatar.stick.counterLabels.labels[0].width==0);
+ assert(avatar.stick.counterLabels.labels[1].index==0); // hidden count reserves no bottom space
  return 0;
 }

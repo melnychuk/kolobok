@@ -1,115 +1,125 @@
-// Local command-driven desktop avatar. No serial, network, audio or task actions.
-// Reuse the native preview compositor and all shared production rendering kernels.
-#define main native_preview_main
-#include "../../tests/preview_avatar.cpp"
-#undef main
-#include "../../firmware/avatar_behavior.h"
+// The desktop avatar: the Stick's own frame (firmware/avatar_frame.h), drawn
+// into an RGB frame for the product site and the Herdr Desktop widget. No
+// serial, network, audio or task actions: the caller supplies the counts.
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include "../../firmware/avatar_frame.h"
+#include "../../firmware/framebuffer_raster.h"
 
 namespace {
+// Desktop display options; the device and the site never set them. A widget
+// that redraws frames as native shapes pays per color and per rectangle, so it
+// can ask for fewer blended edge colors. Coverage is rounded to `alphaLevels`
+// steps (1 = hard edges); 0 keeps full anti-aliasing.
+namespace widget_display {
+int alphaLevels=0;
+}
+
+// avatar_frame's drawing target: plain RGB565, blended exactly as the Stick
+// blends its own frame buffer (framebuffer_raster::View, unswapped).
+struct WidgetCanvas {
+ static constexpr int kWidth=avatar_frame::kScreenWidth,kHeight=avatar_frame::kScreenHeight;
+ uint16_t pixels[kWidth*kHeight]={};
+ uint16_t rows[4][kWidth]={};
+ framebuffer_raster::View view;
+ WidgetCanvas() {
+  view.pixels=pixels;view.width=kWidth;view.height=kHeight;view.stride=kWidth;view.swapped=false;
+ }
+ void ink(int x,int y,uint16_t color,float alpha) {
+  const int levels=widget_display::alphaLevels;
+  if(levels>0)alpha=floorf(alpha*levels+.5f)/levels;
+  view.ink(x,y,color,alpha);
+ }
+ void run(int x,int y,int length,uint16_t color) {
+  uint16_t* row=pixels+y*kWidth+x;
+  for(int i=0;i<length;++i)row[i]=color;
+ }
+ void backdrop(int x,int y,uint16_t color) { rows[y][x]=color; }
+ void fillBackdrop() {
+  for(int y=0;y<kHeight;++y)memcpy(pixels+y*kWidth,rows[y&3],sizeof(rows[0]));
+ }
+ void mark(frame_profile::Metric) {}
+ // RGB888 to stdout. A host face color comes out exactly, not as its RGB565
+ // neighbor, so the face matches the sidebar around it.
+ void output(uint32_t hostRgb,uint16_t host565) const {
+  unsigned char bytes[kWidth*kHeight*3];
+  for(int i=0;i<kWidth*kHeight;++i) {
+   const uint16_t c=pixels[i];
+   if(hostRgb && c==host565) {
+    bytes[i*3]=(hostRgb>>16)&255;bytes[i*3+1]=(hostRgb>>8)&255;bytes[i*3+2]=hostRgb&255;
+    continue;
+   }
+   bytes[i*3]=((c>>11)&31)*255/31;bytes[i*3+1]=((c>>5)&63)*255/63;bytes[i*3+2]=(c&31)*255/31;
+  }
+  fwrite(bytes,1,sizeof(bytes),stdout);
+ }
+};
+
+inline uint16_t rgb565(uint32_t rgb) {
+ return static_cast<uint16_t>((((rgb>>16)&0xf8)<<8)|(((rgb>>8)&0xfc)<<3)|((rgb&0xff)>>3));
+}
+
 struct HeaderAvatar {
- Preview preview{0,0,19};
- bool initialized=false,wasHealthy=false,wasListening=false;
- uint32_t now=0,idleSince=0,celebrateUntil=0;
- float awakeEyeWidth=50,awakeEyeHeight=56;
- int previousActive=0,previousDone=0;
+ avatar_frame::Avatar stick;  // Everything a frame shows, as on the device.
+ WidgetCanvas canvas;
+ avatar_palette::Palette colors=avatar_palette::get(false);
+ // A seeded synthetic voice drives the listening wave; there is no microphone.
+ listen_wave::Synth voice;
+ bool light=false;  // Light theme (avatar_palette); dark by default.
  // Herdr can split one completion over two polls; callers whose snapshots are
  // always atomic (the product site) turn this off so plain decrements show at once.
  bool pairSplitCompletions=true;
+ bool initialized=false;
+ uint32_t now=0;
+ HeaderAvatar() { stick.palette=&colors; }
+ HeaderAvatar(const HeaderAvatar&)=delete;  // `stick` points at `colors`.
+ HeaderAvatar& operator=(const HeaderAvatar&)=delete;
+ // ms must be monotonic. blocked<=active ("needs you" is a subset of active
+ // work). `background`, when nonzero, is the host's color for the face.
  void frame(uint32_t ms,int active,int blocked,int done,bool listening,bool healthy,uint32_t background=0) {
-  const float dt=initialized?fminf((ms-now)/1000.0f,.1f):0;
   now=ms;
-  if(!healthy || listening)active=done=blocked=0;
-  const bool baseline=initialized&&wasHealthy&&healthy&&!wasListening&&!listening;
-  // Same pairing as the firmware: one completion split over two polls is
-  // presented together so the transfer plays instead of a plain reflow.
-  if(baseline&&pairSplitCompletions)preview.pairing.filter(ms,previousDone,previousActive,done,active,
-      blocked==0&&!preview.button.active&&preview.shownActive>0);
-  else preview.pairing.reset();
-  if(!healthy||listening||blocked)celebrateUntil=ms;
-  if(baseline&&!blocked&&done>previousDone) {
-   celebrateUntil=ms+3600;preview.director.notifyCompletion();
+  colors=avatar_palette::get(light);
+  if(background)colors.body=rgb565(background);
+  stick.lightMode=light;stick.palette=&colors;
+  // Dictation, as on the device: a fresh start hands the stage to the face.
+  if(listening&&!stick.voiceRecording) { stick.buttonCue.active=false;voice.primed=false; }
+  stick.voiceRecording=listening;
+  stick.voiceLevelOverride=listening?voice.level(ms):0;
+  if(!healthy) {
+   if(stick.bridgeConnected)stick.disconnect();
+  } else if(pairSplitCompletions) {
+   stick.report(active,blocked,done,ms);
+   stick.releasePairing(ms);
+  } else {
+   stick.applyCounts(active,blocked,done,ms);
   }
-  const bool sorting=preview.flight.observe(ms,done,active,healthy&&!listening,
-      initialized&&blocked==0&&preview.scene.corners>.95f&&
-      !preview.reaction.active&&!preview.donePop.running&&!preview.activePop.running);
-  // Staged task cues share the same priority edges as sorting. Recovery and a
-  // listening return establish baselines; requests never start a cue.
-  const bool cueReady=initialized&&blocked==0&&!sorting&&!preview.button.active;
-  const bool transferred=preview.transfer.observe(ms,done,active,healthy&&!listening,cueReady);
-  const bool arrived=preview.arrival.observe(ms,active,healthy&&!listening,
-      cueReady&&!transferred&&!preview.transfer.busy(ms));
-  // Opening the last unread completion: step over the green, never fade it.
-  preview.stepOver.observe(ms,done,active,healthy&&!listening,
-      cueReady&&!transferred&&!arrived&&!preview.transfer.busy(ms)&&!preview.arrival.busy(ms)&&
-      preview.scene.corners<.05f&&preview.shownDone>0);
-  // Celebrate after the face is home again, not while it is offscreen.
-  if(transferred)celebrateUntil=ms+task_cues::Transfer::kEnd+3600;
-  preview.healthy=healthy;
-  if(!initialized) {
-   preview.donePop.observed=done;preview.activePop.observed=active;
-   previousActive=active;previousDone=done;idleSince=ms;
-  } else if(baseline&&!sorting&&!transferred&&!arrived&&blocked==0) {
-   if(active>previousActive || done>previousDone) {
-    const bool completed=done>previousDone;
-    const int side=status_sides::direction(completed);  // toward the changed counter
-    preview.reaction.notify(side,completed,ms);
-    preview.surface.kick(side,.9f);
-   }
-  }
-  previousActive=active;previousDone=done;wasHealthy=healthy;wasListening=listening;
-  if(active||done||blocked||listening||!healthy)idleSince=ms;
-  const auto mode=avatar_behavior::select({active,blocked,done,healthy,listening},
-      avatar_behavior::pending(ms,celebrateUntil),!initialized||ms-idleSince<4000);
-  preview.liveMode=mode;
-  preview.done=done;preview.active=active;preview.state=avatar_behavior::state(mode);
-  preview.player.calm=!avatar_behavior::pending(ms,celebrateUntil);
-  // Like the firmware layout, a charging transfer keeps its old counts until
-  // the flash covers the swap; otherwise the band reflows in mid-charge.
-  const int heldDone=preview.stepOver.displayCount(ms,preview.transfer.displayCount(ms,true,done));
-  const int heldActive=preview.transfer.displayCount(ms,false,active);
-  const int shownDone=preview.flight.displayCount(ms,true,heldDone);
-  const int shownActive=preview.flight.displayCount(ms,false,heldActive);
-  const float strip=fmaxf(shownDone?stripWidth(shownDone):0,shownActive?stripWidth(shownActive):0);
-  const bool paired=(shownDone&&shownActive)||blocked||preview.flight.busy(ms);
-  auto& scene=preview.scene;
-  const float region=heldActive||heldDone?240-2*strip:280;
-  // A single counter: the face fills the opposite side of the screen.
-  const float offset=paired||listening?0:
-      (shownDone?status_sides::kActive:shownActive?status_sides::kDone:0)*strip/2;
-  scene.region=initialized?approach(scene.region,region,dt,.15f):region;
-  scene.corners=initialized?approach(scene.corners,paired?1:0,dt,avatar_scene::kReflowSeconds):paired?1:0;
-  scene.offset=initialized?approach(scene.offset,offset,dt,avatar_scene::kShiftSeconds):offset;
-  scene.side=initialized?approach(scene.side,heldActive||heldDone?1:0,dt,.16f):heldActive||heldDone?1:0;
-  scene.alert=initialized?approach(scene.alert,blocked?1:0,dt,.18f):blocked?1:0;
-  scene.awakeHeight=avatar_scene::mix(56,44,scene.alert);
-  scene.gap=avatar_scene::mix(19,15.2f,scene.alert);
-  scene.eyeWidth=awakeEyeWidth;scene.eyeHeight=awakeEyeHeight;
-  preview.step(ms);
-  awakeEyeWidth=scene.eyeWidth;awakeEyeHeight=scene.eyeHeight;
-  const float sleepTarget=mode==avatar_behavior::Mode::sleeping?1:0;
-  // Like firmware, a startle snaps the sleeping layout open (35ms) instead
-  // of the ordinary slow wake.
-  scene.sleep=approach(scene.sleep,sleepTarget,dt,
-                       sleepTarget?.7f:preview.startle.active?.035f:.18f);
-  scene.eyeWidth*=avatar_scene::mix(1,.65f,scene.sleep);
-  scene.eyeHeight=avatar_scene::mix(scene.eyeHeight,4,scene.sleep);
-  scene.eyeY+=8*scene.sleep;
+  const float seconds=stick.update(ms);
+  stick.draw(canvas,ms,seconds);
   initialized=true;
-  preview.render(false,background);
+  canvas.output(background,colors.body);
  }
- // Synthetic loud-noise startle (no microphone here). As on the device, it
- // wakes a dozing face: hold ordinary idle for 4s, then it dozes off again.
+ // Front button A: a short tap winks (and wakes); after dictation it nods.
+ void button(bool voiceEnd) {
+  stick.buttonCue.notify(now,voiceEnd);
+  if(!voiceEnd)stick.lastTaskAt=now;
+ }
+ // A loud noise (the device's microphone detector), from the left (<0) or the
+ // right. The next frame plays it when the face may startle; it also wakes a
+ // dozing face for the ordinary idle hold.
  void startle(float side) {
-  preview.startle.notify(now,1,side<0?-1:1);
-  preview.surface.kick(0,1);
-  idleSince=now;
+  stick.pendingStartle=1;
+  stick.startleSide=side<0?-1:1;
  }
+ // Someone is looking: hold idle-awake instead of dozing after four seconds.
+ void keepAwake() { stick.lastTaskAt=now; }
 };
 } // namespace
 
 #ifndef STICK_AVATAR_WIDGET_NO_MAIN
 int main() {
- HeaderAvatar avatar;
+ static HeaderAvatar avatar;
  char line[128];
  while(fgets(line,sizeof(line),stdin)) {
   if(!strchr(line,'\n'))return 2;

@@ -1,7 +1,7 @@
-// WebAssembly entry for the product site. It compiles the SAME header-widget
-// compositor (experiments/avatar-widget) and every shared firmware kernel, then
-// exposes a tiny frame/event API to JavaScript. No firmware sources change:
-// stdout writes are redirected into a static RGB buffer by macro.
+// WebAssembly entry for the product site and the Herdr widget. It compiles the
+// desktop avatar (experiments/avatar-widget), which runs the Stick's own frame
+// code (firmware/avatar_frame.h), and exposes a tiny frame/event API to
+// JavaScript. stdout writes are redirected into a static RGB buffer by macro.
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -32,17 +32,17 @@ char nameBuffer[64];
 
 void applyForcedClip() {
  if(!avatar||forcedState<0)return;
- auto& p=avatar->preview;
+ auto& p=avatar->stick;
  // Wait for the director to finish its handoff into the requested mode.
- if(p.director.running||p.player.state!=static_cast<eye_acting::State>(forcedState)||p.player.index<0) {
+ if(p.director.running||p.actor.state!=static_cast<eye_acting::State>(forcedState)||p.actor.index<0) {
   if(avatar->now-forcedAt>4000)forcedState=-1;  // Gave up: state never arrived.
   return;
  }
- p.player.entryEyes=p.player.eyes(avatar->now);
- p.player.entryBody=p.player.body(avatar->now);
- p.player.index=forcedIndex;
- p.player.started=avatar->now;
- p.player.used[forcedState]|=static_cast<uint16_t>(1u<<forcedIndex);
+ p.actor.entryEyes=p.actor.eyes(avatar->now);
+ p.actor.entryBody=p.actor.body(avatar->now);
+ p.actor.index=forcedIndex;
+ p.actor.started=avatar->now;
+ p.actor.used[forcedState]|=static_cast<uint16_t>(1u<<forcedIndex);
  p.director.quietHold=false;p.director.pairReturn=false;
  forcedState=-1;
 }
@@ -61,7 +61,7 @@ __attribute__((export_name("stick_frame_ptr"))) unsigned char* stick_frame_ptr()
 // Optional display hint: the four repeating RGB565 status rows under the face.
 // This is read-only and does not change the site's normal RGB frame output.
 __attribute__((export_name("stick_backdrop_ptr"))) const uint16_t* stick_backdrop_ptr() {
- return avatar?avatar->preview.backdrop[0]:nullptr;
+ return avatar?avatar->stick.statusRows[0]:nullptr;
 }
 // Desktop widget display options; the site never calls this, so its frames are
 // unchanged. dither=0 leaves the status field undithered (the widget draws its
@@ -69,9 +69,9 @@ __attribute__((export_name("stick_backdrop_ptr"))) const uint16_t* stick_backdro
 // (1 = hard edges); 0 keeps full anti-aliasing. Takes effect on the next frame.
 __attribute__((export_name("stick_set_display"))) void stick_set_display(int dither,int alphaLevels) {
  if(!avatar)stick_init();
- auto& cache=avatar->preview.backgroundCache;
+ auto& cache=avatar->stick.statusCache;
  if(cache.dither!=(dither!=0)) { cache.dither=dither!=0;cache.valid=false; }
- display::alphaLevels=alphaLevels<0?0:alphaLevels>16?16:alphaLevels;
+ widget_display::alphaLevels=alphaLevels<0?0:alphaLevels>16?16:alphaLevels;
 }
 // Light mode (the side key on the device): 1 = light (off-white face, dark
 // gray eyes and ink, paler status colors), 0 = dark (the default; frames are
@@ -79,7 +79,7 @@ __attribute__((export_name("stick_set_display"))) void stick_set_display(int dit
 // and playground switch set it. Takes effect on the next frame.
 __attribute__((export_name("stick_set_theme"))) void stick_set_theme(int light) {
  if(!avatar)stick_init();
- avatar->preview.light=light!=0;
+ avatar->light=light!=0;
 }
 // ms must be monotonic. blocked<=active ("needs you" is a subset of active work).
 __attribute__((export_name("stick_frame")))
@@ -92,7 +92,7 @@ void stick_frame(uint32_t ms,int active,int blocked,int done,int listening,int h
 // Front button A: a short tap winks; release after dictation nods.
 __attribute__((export_name("stick_button"))) void stick_button(int voiceEnd) {
  if(!avatar)return;
- avatar->preview.button.notify(avatar->now,voiceEnd!=0);
+ avatar->button(voiceEnd!=0);
 }
 // Loud-noise startle (the device uses its microphone level detector). It
 // also wakes a dozing face for a few seconds, like the device.
@@ -122,17 +122,17 @@ __attribute__((export_name("stick_clip_duration"))) int stick_clip_duration(int 
 }
 // Currently playing clip, for the UI caption: state*100+index, or -1.
 __attribute__((export_name("stick_current_clip"))) int stick_current_clip() {
- if(!avatar||avatar->preview.player.index<0||avatar->preview.director.running)return -1;
- const auto& p=avatar->preview.player;
- if(!avatar_behavior::scripted(avatar->preview.liveMode))return -1;
+ if(!avatar||avatar->stick.actor.index<0||avatar->stick.director.running)return -1;
+ const auto& p=avatar->stick.actor;
+ if(!avatar_behavior::scripted(avatar->stick.face))return -1;
  return static_cast<int>(p.state)*100+p.index;
 }
 __attribute__((export_name("stick_mode"))) int stick_mode() {
- return avatar?static_cast<int>(avatar->preview.liveMode):0;
+ return avatar?static_cast<int>(avatar->stick.face):0;
 }
 // Site-only: someone is looking. Holds idle-awake (no tasks) instead of the
 // 4s doze, like a person nearby; the sleep chapter simply stops calling it.
 __attribute__((export_name("stick_keep_awake"))) void stick_keep_awake() {
- if(avatar)avatar->idleSince=avatar->now;
+ if(avatar)avatar->keepAwake();
 }
 }

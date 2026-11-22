@@ -95,8 +95,14 @@ scientific detector of thought, honesty, memory, or emotion.
   remain readable without immobilizing a whole band of the face.
 - `firmware/status_background.h`: shared green-to-blue (coral for requests)
   smoothstep gradient, with fixed Bayer dithering for RGB565.
-- `tests/preview_avatar.cpp`: native RGB565 frame renderer using these same
-  headers; `scripts/preview-avatar.py` generates GIFs and timestamped storyboards.
+- `firmware/avatar_frame.h`: the whole frame, from counts, buttons and the clock
+  to pixels. The device (`firmware.ino`) and the desktop avatar
+  (`experiments/avatar-widget/main.cpp`, compiled into the site's and the Herdr
+  widget's `avatar.wasm`) run this same code; only the drawing target differs.
+  `tests/test_device_frames.py` guards the device's frames.
+- `tests/preview_avatar.cpp`: native RGB565 fixture renderer (scripted clips and
+  events) using the same kernels; `scripts/preview-avatar.py` generates GIFs and
+  timestamped storyboards from it.
 
 Eye transitions use short authored saccades and quintic easing, with genuine
 holds. Positional travel (eye x/y and body lean/lift) now finishes 25% earlier

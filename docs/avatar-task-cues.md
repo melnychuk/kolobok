@@ -65,8 +65,8 @@ cause is not logged (the bridge records no count transitions); Herdr status
 passing through `unknown`, or a completion sequence lagging the status, would
 both produce it.
 
-`task_cues::CompletionPairing` (firmware `processLine`/`applyCounts`, header
-`HeaderAvatar::frame`, gallery modes 30/31) holds the FIRST half for up to
+`task_cues::CompletionPairing` (`avatar_frame::Avatar::report`, shared by the
+firmware and the desktop avatar; gallery modes 30/31) holds the FIRST half for up to
 `kWindow` = 4.6s (two polls plus write jitter) when no done label exists yet:
 
 - active falls with done still zero (including I -> 0), or

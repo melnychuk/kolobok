@@ -2,6 +2,9 @@
 // stepping foot instead of fading it. Synthetic aggregates only.
 #include <assert.h>
 #include <stdio.h>
+#define main native_preview_main
+#include "preview_avatar.cpp"
+#undef main
 #define STICK_AVATAR_WIDGET_NO_MAIN
 #include "../experiments/avatar-widget/main.cpp"
 
@@ -95,7 +98,7 @@ void mask() {
 void compositor() {
  HeaderAvatar avatar;
  for(uint32_t ms=0;ms<5000;ms+=33)avatar.frame(ms,0,0,2,false,true);
- auto& preview=avatar.preview;
+ auto& preview=avatar.stick;
  assert(preview.backgroundDeparture.presence[0]==1);
  const uint32_t opened=5016;
  avatar.frame(opened,0,0,0,false,true);
@@ -118,19 +121,22 @@ void compositor() {
  }
  assert(planted&&released&&covered);
  assert(!preview.stepOver.busy(opened+4000)&&preview.stepOver.reachValue==0);
- assert(preview.liveMode==avatar_behavior::Mode::sleeping||preview.liveMode==avatar_behavior::Mode::idle);
+ assert(preview.face==avatar_behavior::Mode::sleeping||preview.face==avatar_behavior::Mode::idle);
  // Listening cancels the step at once and reveals current data.
  HeaderAvatar listening;
  for(uint32_t ms=0;ms<5000;ms+=33)listening.frame(ms,0,0,1,false,true);
  listening.frame(5016,0,0,0,false,true);
- assert(listening.preview.stepOver.busy(5016));
+ assert(listening.stick.stepOver.busy(5016));
  listening.frame(5100,0,0,0,true,true);
- assert(!listening.preview.stepOver.busy(5100)&&listening.preview.shownDone==0);
+ assert(!listening.stick.stepOver.busy(5100));
+ // The shown count follows on the next frame, as on the device.
+ listening.frame(5133,0,0,0,true,true);
+ assert(listening.stick.shownDone==0);
  // Done disappearing while work remains is not a step over.
  HeaderAvatar working;
  for(uint32_t ms=0;ms<5000;ms+=33)working.frame(ms,1,0,1,false,true);
  working.frame(5016,1,0,0,false,true);
- assert(!working.preview.stepOver.busy(5016));
+ assert(!working.stick.stepOver.busy(5016));
 }
 } // namespace
 int main() {
