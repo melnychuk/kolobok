@@ -15,12 +15,14 @@ export { SCREEN }; // ST7789P3 active area
 // Landscape: x = length (USB-C end at −x, HAT end at +x), y = width, z = depth.
 const L = 48, Wd = 24, D = 15, R = 3; // corner radius seen from the front
 const FRONT = D / 2, BACK = -D / 2, SEAM = -2.6;
-const KEY1 = { x: -11, len: 10.6, wid: 2.5 };
+// M5Stack's mechanical drawing puts KEY1 about 10.5 mm from the USB-C end.
+const KEY1 = { x: -13.5, len: 10.6, wid: 2.5 };
+const KEY_BLUE = 0x195acb; // Darker base so the lit key reads closer to the UI's Active blue.
 export const FLOOR = -Wd / 2 - 3.2; // the desk under the (hovering) stick
 
 export const SHELLS = {
-  stock: { body: 0x35373c, key: 0x1d8fea, label: "StickS3 charcoal" },
-  snow: { body: 0xdfe2e8, key: 0x1d8fea, label: "Snow" },
+  stock: { body: 0x35373c, key: KEY_BLUE, label: "StickS3 charcoal" },
+  snow: { body: 0xdfe2e8, key: KEY_BLUE, label: "Snow" },
   tangerine: { body: 0xf26b38, key: 0x16181d, label: "Tangerine" },
   mint: { body: 0x8fdcbc, key: 0xf7768e, label: "Mint" },
 };
@@ -182,7 +184,7 @@ export class Device {
     };
     // Matte, slightly satin PC shell.
     this.shellMat = this.#mat({ color: 0x35373c, roughness: 0.6, clearcoat: 0.12, clearcoatRoughness: 0.6, envMapIntensity: 0.45 });
-    this.keyMat = this.#mat({ color: 0x1d8fea, roughness: 0.32, clearcoat: 0.7, emissive: 0x0b3d70, emissiveIntensity: 0.12, envMapIntensity: 0.7 });
+    this.keyMat = this.#mat({ color: KEY_BLUE, roughness: 0.32, clearcoat: 0.3, specularIntensity: 0.35, emissive: 0x0b3d70, emissiveIntensity: 0.12, envMapIntensity: 0.7 });
     const seamMat = this.#mat({ color: 0x141518, roughness: 0.8 });
     const ink = this.#mat({ color: 0x050507, roughness: 0.14, clearcoat: 1 });
     const metal = this.#mat({ color: 0xc7cbd3, metalness: 1, roughness: 0.28 }, THREE.MeshStandardMaterial);
