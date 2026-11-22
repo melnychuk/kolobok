@@ -13,8 +13,25 @@ inline float clamp(float value,float lo,float hi) { return fmaxf(lo,fminf(hi,val
 constexpr int kEdgeNodes=20;
 constexpr float kEdgeTop=-20,kEdgeSpan=175;
 inline float edgeRow(int i) { return kEdgeTop+i*kEdgeSpan/(kEdgeNodes-1); }
+// Lower rim: nodes span the screen width, node i at x = i*kRimWidth/(count-1).
+constexpr int kRimNodes=64;
+constexpr float kRimWidth=239;
+inline float rimX(int i) { return i*kRimWidth/(kRimNodes-1); }
+// The rim was tuned on 32 nodes. Spring and curvature-viscosity coefficients
+// scale with the squared node density so the continuous rim keeps the same
+// wave speed and damping at any resolution.
+constexpr float kRimDensity=(kRimNodes-1)/31.0f;
+constexpr float kRimTension=190*kRimDensity*kRimDensity;
+constexpr float kRimViscosity=6*kRimDensity*kRimDensity;
+// Authored deformations the membranes carry: outward pixels at each node
+// (side: away from the body centre; rim: downward). The membranes keep part
+// of their old position when the shape changes and then catch up, exactly as
+// they do for body shape changes, so a reach has weight and follow-through.
+struct Shape {
+ float side[2][kEdgeNodes]={},rim[kRimNodes]={};
+};
 struct Surface {
- static constexpr int count=32;
+ static constexpr int count=kRimNodes;
  float displacement[count]={},velocity[count]={};
  float x=0,y=0,vx=0,vy=0,impact=0,accumulator=0;
  float lastLean=0,lastLift=0,lastStretch=1;
@@ -22,6 +39,28 @@ struct Surface {
  float edge[2][kEdgeNodes]={},edgeVelocity[2][kEdgeNodes]={};
  float lastWidth=1,lastEdgeStretch=1;
  bool edgePrimed=false;
+ // The authored shape the membranes currently carry (see follow()).
+ Shape shape;
+ static constexpr float kShapeDrag=.6f;
+ // Rim node nearest to `u` in [0,1], as a fractional index.
+ static float node(float u) { return u*(count-1); }
+ // Lower-rim contact patch: full support across the middle of the body,
+ // fading smoothly to none, so the rim never folds at a supported/free node.
+ static float support(int i) {
+  const float t=clamp((fabsf(i/static_cast<float>(count-1)-.5f)-.06f)/.09f,0,1);
+  return 1-t*t*(3-2*t);
+ }
+ // Carry a new authored shape. The rigid outline moves at once; the membrane
+ // keeps kShapeDrag of its old position, then its springs pull it along.
+ void follow(const Shape& next) {
+  for(int s=0;s<2;++s) {
+   const float sign=s?-1.0f:1.0f;
+   for(int i=0;i<kEdgeNodes;++i)
+    edge[s][i]+=sign*(next.side[s][i]-shape.side[s][i])*kShapeDrag;
+  }
+  for(int i=0;i<count;++i)displacement[i]-=(next.rim[i]-shape.rim[i])*kShapeDrag;
+  shape=next;
+ }
  void kick(float direction,float strength) {
   // The cued side swells outward near the core and the swell travels away.
   for(int s=0;s<2;++s) {
@@ -33,11 +72,11 @@ struct Surface {
    }
   }
   vx+=direction*95*strength;vy-=65*strength;
-  float center=15.5f;
-  if(direction<0)center=4;
-  if(direction>0)center=27;
+  float center=node(.5f);
+  if(direction<0)center=node(4/31.0f);
+  if(direction>0)center=node(27/31.0f);
   for(int i=0;i<count;++i) {
-   const float distance=(i-center)/2.8f;
+   const float distance=(i-center)/node(2.8f/31);
    velocity[i]+=95*strength*expf(-distance*distance*.5f);
   }
  }
@@ -46,7 +85,9 @@ struct Surface {
   const float motion=(pose.lift-lastLift)*-2.5f+(stretch-lastStretch)*-55;
   const float turn=(pose.lean-lastLean)*1.8f;
   for(int i=0;i<count;++i) {
-   const float u=i/static_cast<float>(count-1),edge=fabsf(u-.5f)*2;
+   // Free ends move most; a rounded (not V-shaped) profile at the middle, so
+   // body motion never puts a fold into the rim.
+   const float u=i/static_cast<float>(count-1),edge=2*sqrtf((u-.5f)*(u-.5f)+.0025f)-.1f;
    velocity[i]+=(motion+turn*(u-.5f))*edge;
   }
   lastLean=pose.lean;lastLift=pose.lift;lastStretch=stretch;
@@ -84,20 +125,26 @@ struct Surface {
    impact*=expf(-dt/0.20f);
    float acceleration[count];
    for(int i=0;i<count;++i) {
-    const float left=displacement[i?i-1:i],right=displacement[i+1<count?i+1:i];
-    acceleration[i]=190*(left+right-2*displacement[i])-7*displacement[i]-1.35f*velocity[i];
+    const int a=i?i-1:i,b=i+1<count?i+1:i;
+    // Viscosity on curvature velocity damps short ripples first, as on the
+    // side membranes: broad sloshes survive, node-scale zigzags do not.
+    acceleration[i]=kRimTension*(displacement[a]+displacement[b]-2*displacement[i])+
+                    kRimViscosity*(velocity[a]+velocity[b]-2*velocity[i])-
+                    7*displacement[i]-1.35f*velocity[i];
+    // The middle of the rim rests on the support as a soft, inelastic floor:
+    // a near critically damped penalty spring, weighted by a smooth contact
+    // patch. Free ends can still flap below it over the numbers.
+    if(supported) {
+     const float w=support(i),sink=displacement[i]+shape.rim[i]+y;
+     if(w>0&&sink>0)acceleration[i]-=w*(2500*sink+90*velocity[i]);
+    }
    }
    for(int i=0;i<count;++i) {
     velocity[i]+=acceleration[i]*dt;
     displacement[i]+=velocity[i]*dt;
+    // Safety net only; normal motion stays well inside it.
     if(fabsf(displacement[i])>18) {
      displacement[i]=clamp(displacement[i],-18,18);velocity[i]*=.25f;
-    }
-    // Only the few actual contact points rest on the support. Free ends can
-    // flap below it and overlap the foreground numbers.
-    if(supported&&i>=13&&i<=18&&displacement[i]+y>0) {
-     displacement[i]=-y;
-     if(velocity[i]>0)velocity[i]*=-.18f;
     }
    }
   }

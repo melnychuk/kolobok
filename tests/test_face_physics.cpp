@@ -101,6 +101,47 @@ int main() {
    assert(fabsf(repeat.displacement[i])<=18.001f);
   }
  }
+ // Landing on the support folds no horns into the rim: the contact patch is a
+ // soft, weighted floor, not a set of pinned nodes beside free ones.
+ {
+  Surface land;land.y=-9;land.vy=-20;land.kick(0,.9f);
+  float bend=0,amplitude=0;
+  for(int frame=0;frame<120;++frame) {
+   land.step(.033f,neutral,true);
+   for(int i=1;i+1<land.count;++i) {
+    bend=fmaxf(bend,fabsf(land.displacement[i-1]-2*land.displacement[i]+land.displacement[i+1]));
+    amplitude=fmaxf(amplitude,fabsf(land.displacement[i]));
+   }
+  }
+  // Node spacing is under 4px: this bound keeps the rim's radius above ~15px.
+  assert(amplitude>5&&bend<1&&fabsf(land.y)<.01f);
+  // Node-scale zigzags die out quickly; a broad slosh survives.
+  Surface zigzag,broad;
+  for(int i=0;i<zigzag.count;++i) {
+   zigzag.displacement[i]=i%2?1:-1;
+   broad.displacement[i]=3*sinf(i*6.2831853f/(broad.count-1));
+  }
+  for(int tick=0;tick<24;++tick){zigzag.step(1.0f/120,neutral,false);broad.step(1.0f/120,neutral,false);}
+  float rough=0,smooth=0;
+  for(int i=0;i<zigzag.count;++i){rough=fmaxf(rough,fabsf(zigzag.displacement[i]));smooth=fmaxf(smooth,fabsf(broad.displacement[i]));}
+  assert(rough<.1f&&smooth>2);
+ }
+ // An authored shape moves the rigid outline at once; the membranes keep part
+ // of their old position, follow through, then carry the shape at rest.
+ {
+  Surface carry;Shape shape;
+  for(int i=0;i<kEdgeNodes;++i)shape.side[1][i]=10*expf(-.5f*(i-9)*(i-9)/9.0f);
+  for(int i=0;i<Surface::count;++i)shape.rim[i]=6*expf(-.5f*(i-12)*(i-12)/25.0f);
+  carry.follow(shape);
+  assert(fabsf(carry.edge[1][9]+10*Surface::kShapeDrag)<1e-4f);  // right side lags inward
+  assert(fabsf(carry.displacement[12]+6*Surface::kShapeDrag)<1e-4f);  // rim lags upward
+  assert(carry.edge[0][9]==0);
+  carry.follow(shape);  // the same shape again adds nothing
+  assert(fabsf(carry.edge[1][9]+10*Surface::kShapeDrag)<1e-4f);
+  for(int tick=0;tick<480;++tick)carry.step(1.0f/120,neutral,false);
+  for(int i=0;i<kEdgeNodes;++i)assert(fabsf(carry.edge[1][i])<.1f);
+  for(int i=0;i<Surface::count;++i)assert(fabsf(carry.displacement[i])<.1f);
+ }
  Reaction reaction;reaction.notify(1,false,100);
  const auto active=reaction.apply(neutral,410,false);
  assert(active.x>8&&active.y<-3&&active.smile>.7f&&active.height>1.15f);

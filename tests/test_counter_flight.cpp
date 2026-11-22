@@ -65,13 +65,14 @@ void trajectory(uint32_t when,int done,int active) {
  }
 }
 // Blobs are the lower rim itself: zero reach is exact, a full lobe reaches
-// its tip over the numeral and never floats or lowers past the tip, and the
-// raster (runs + AA fringe) still matches per-pixel coverage.
+// its tip over the numeral and never floats or lowers past the tip, the
+// raster (runs + AA fringe) still matches per-pixel coverage, and a long
+// blob widens into the body like a pseudopod instead of hanging on walls.
 void blobs() {
  avatar_scene::Scene scene;
  avatar_scene::Mask plain,mask;
  avatar_scene::buildMask(scene,plain);
- for(float reach: {.05f,.4f,1.0f})for(float x: {4.0f,24.0f,90.0f})for(float tip: {96.0f,109.0f}) {
+ for(float reach: {.05f,.4f,1.0f})for(float x: {4.0f,24.0f,90.0f})for(float tip: {96.0f,109.0f,130.0f}) {
   scene.hands.reach[0]=scene.hands.reach[1]=reach;
   scene.hands.x[0]=x;scene.hands.x[1]=240-x;
   scene.hands.y[0]=scene.hands.y[1]=tip;
@@ -79,9 +80,14 @@ void blobs() {
   avatar_scene::buildMask(scene,mask);
   for(int c=0;c<240;++c) {
    assert(mask.bottom[c]>=plain.bottom[c]);
-   assert(mask.bottom[c]<=fmaxf(plain.bottom[c],tip)+avatar_scene::kLobeFillet*.25f+.01f);
-   const float far=fminf(fabsf(c+.5f-x),fabsf(c+.5f-(240-x)));
-   if(far>14+avatar_scene::kLobeFillet+1)assert(mask.bottom[c]==plain.bottom[c]);
+   const float cx=fabsf(c+.5f-x)<fabsf(c+.5f-(240-x))?x:240-x;
+   const int axis=static_cast<int>(cx);
+   // Measured from the local rim: never deeper than the tip plus the rim's
+   // own rise toward this column (and the emerging tip's small fillet).
+   assert(mask.bottom[c]<=fmaxf(plain.bottom[c],tip+fmaxf(0,plain.bottom[c]-plain.bottom[axis]))+
+                          avatar_scene::kLobeFillet*.25f+.5f);
+   const float far=fabsf(c+.5f-cx),drop=fabsf(tip-plain.bottom[axis]);
+   if(far>2*14+2.2f*drop+avatar_scene::kLobeFillet+2)assert(mask.bottom[c]==plain.bottom[c]);
   }
   if(reach==1)for(float cx: {x,240-x}) {
    const int c=static_cast<int>(cx);
@@ -89,6 +95,28 @@ void blobs() {
    // Opaque from the rim down to the tip: one body, no detached blob.
    for(int y=static_cast<int>(plain.bottom[c])-2;y<static_cast<int>(tip)-1;++y)
     assert(mask.coverage(c,y)==1);
+  }
+  // No walls: neighbouring columns never step by more than the flank slope
+  // (plus the rim's own slope), so a long blob cannot read as a peg.
+  if(x>=24)for(int c=1;c<240;++c) {
+   if(mask.bottom[c]<0||mask.bottom[c-1]<0)continue;
+   const float rim=fabsf(plain.bottom[c]-plain.bottom[c-1]);
+   assert(fabsf(mask.bottom[c]-mask.bottom[c-1])<=rim+avatar_scene::kLobeFlareTan+.6f);
+  }
+  // A long blob is a pseudopod: narrower than its numeral-wide tip circle
+  // near the tip, much wider than it where it leaves the body (a tube would
+  // be 2*14 wide at every depth). The other blob is 60px away.
+  if(reach==1&&tip==130&&x==90) {
+   const int c=static_cast<int>(x);
+   const float depth=mask.bottom[c]-plain.bottom[c];
+   int nearTip=0,nearRim=0;
+   for(int k=0;k<240;++k) {
+    const float below=mask.bottom[k]-plain.bottom[k];
+    if(fabsf(k+.5f-x)>29)continue;
+    if(below>=.8f*depth)++nearTip;
+    if(below>=.2f*depth)++nearRim;
+   }
+   assert(depth>20&&nearTip<2*14&&nearRim>1.4f*2*14);
   }
   static float drawn[135][240];
   for(auto& row:drawn)for(float& v:row)v=0;
@@ -99,6 +127,16 @@ void blobs() {
    if(c>=.999f)assert(drawn[py][px]==1);
    else assert(fabsf(drawn[py][px]-c)<1e-6f);
   }
+ }
+ // Emerging, the blob grows continuously: no jump as the skirt appears.
+ scene.hands.x[0]=90;scene.hands.x[1]=150;scene.hands.halfWidth[0]=scene.hands.halfWidth[1]=14;
+ scene.hands.y[0]=scene.hands.y[1]=130;
+ avatar_scene::Mask previous;bool first=true;
+ for(float reach=0;reach<=1.0001f;reach+=.002f) {
+  scene.hands.reach[0]=scene.hands.reach[1]=reach;
+  avatar_scene::buildMask(scene,mask);
+  if(!first)for(int c=0;c<240;++c)assert(fabsf(mask.bottom[c]-previous.bottom[c])<.5f);
+  previous=mask;first=false;
  }
  scene.hands=avatar_scene::Hands{};
  avatar_scene::buildMask(scene,mask);

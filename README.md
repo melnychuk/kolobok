@@ -100,7 +100,8 @@ python3 scripts/preview-avatar.py
 ```
 
 Design and behaviour are documented in [avatar design](docs/avatar-design.md),
-[task cues](docs/avatar-task-cues.md) and
+[task cues](docs/avatar-task-cues.md), the
+[soft-body outline](docs/avatar-soft-body.md) and
 [render performance](docs/render-performance.md).
 
 ## Credits and license

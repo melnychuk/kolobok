@@ -476,6 +476,11 @@ struct Avatar {
                         countFont(ui.done.fontIndex).capHeight,
                         countFont(ui.active.fontIndex).capHeight,
                         counterContactReady(ui.done), counterContactReady(ui.active));
+    // The membranes carry the check's swell and the sorting sags: the rigid
+    // outline takes the new shape now, the skin lags and follows through.
+    face_physics::Shape carried;
+    avatar_scene::membraneShape(scene, carried);
+    surface.follow(carried);
   }
 
   status_background::State statusBackgroundState(uint32_t now) {

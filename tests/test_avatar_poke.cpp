@@ -16,29 +16,37 @@ const count_raster::Font& fittingFont(const char* text) {
  for(int i=0;i<4;++i)if(count_raster::width(*fonts[i],text)<=56)return *fonts[i];
  return *fonts[4];
 }
-void checkAttachedPixels(const avatar_scene::Mask& mask) {
- const auto& h=mask.hand;
- assert(h.radius>0);
- const int x0=static_cast<int>(fmaxf(0,floorf(h.left)-1));
- const int x1=static_cast<int>(fminf(239,ceilf(h.right)+1));
- const int y0=static_cast<int>(fmaxf(0,floorf(h.top)-1));
- const int y1=static_cast<int>(fminf(134,ceilf(h.bottom)+1));
- bool seen[240*135]={};int queue[240*135];int begin=0,end=0;
- const int rootX=static_cast<int>(h.ax),rootY=static_cast<int>(h.ay);
- assert(mask.baseCoverage(rootX,rootY)>.99f);
- queue[end++]=rootY*240+rootX;seen[queue[0]]=true;
- while(begin<end) {
-  const int index=queue[begin++],x=index%240,y=index/240;
-  for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx) {
-   const int xx=x+dx,yy=y+dy;
-   if(xx<x0||xx>x1||yy<y0||yy>y1)continue;
-   const int next=yy*240+xx;
-   if(seen[next]||mask.coverage(xx,yy)<=.5f)continue;
-   seen[next]=true;queue[end++]=next;
-  }
+// A check only swells the body outward, smoothly: the facing side (or the
+// lower rim) moves out, nothing else moves, the change has no corner, and the
+// raster still matches per-pixel coverage.
+void checkSwell(const avatar_scene::Mask& mask,const avatar_scene::Mask& rest,int side) {
+ for(int y=0;y<135;++y) {
+  assert(mask.left[y]<=rest.left[y]&&mask.right[y]>=rest.right[y]);
+  if(side>0)assert(mask.left[y]==rest.left[y]);
+  if(side<0)assert(mask.right[y]==rest.right[y]);
  }
- for(int y=y0;y<=y1;++y)for(int x=x0;x<=x1;++x)
-  if(mask.hand.coverage(x,y)>.5f)assert(seen[y*240+x]);
+ for(int x=0;x<240;++x)assert(mask.bottom[x]>=rest.bottom[x]);
+ // Second differences of the added skin stay small: a bell, never a tent.
+ for(int y=1;y<134;++y) {
+  const float a=rest.left[y-1]-mask.left[y-1],b=rest.left[y]-mask.left[y],c=rest.left[y+1]-mask.left[y+1];
+  const float d=mask.right[y-1]-rest.right[y-1],e=mask.right[y]-rest.right[y],f=mask.right[y+1]-rest.right[y+1];
+  if(rest.left[y]>0&&mask.left[y-1]>0&&mask.left[y+1]>0)assert(fabsf(a-2*b+c)<.25f);
+  if(rest.right[y]<240&&mask.right[y-1]<240&&mask.right[y+1]<240)assert(fabsf(d-2*e+f)<.25f);
+ }
+ for(int x=1;x<239;++x) {
+  if(rest.bottom[x-1]<0||rest.bottom[x+1]<0)continue;
+  const float a=mask.bottom[x-1]-rest.bottom[x-1],b=mask.bottom[x]-rest.bottom[x],c=mask.bottom[x+1]-rest.bottom[x+1];
+  assert(fabsf(a-2*b+c)<.25f);
+ }
+ static float raster[240*135];
+ memset(raster,0,sizeof(raster));
+ mask.raster([&](int x,int y,int n){for(int j=0;j<n;++j)raster[y*240+x+j]=1;},
+             [&](int x,int y,float a){raster[y*240+x]=a;});
+ for(int y=0;y<135;++y)for(int x=0;x<240;++x) {
+  const float a=mask.coverage(x,y);
+  assert(isfinite(a)&&a>=0&&a<=1);
+  assert(fabsf(raster[y*240+x]-a)<.0011f);
+ }
 }
 int main() {
  // Saturated full-label overlaps must still detect a locally advancing edge.
@@ -62,23 +70,14 @@ int main() {
  scene.poke.side=-1;scene.poke.cx=24;scene.poke.cy=67.5f;
  scene.poke.width=14;scene.poke.height=23;scene.poke.strength=1;
  avatar_scene::buildMask(scene,poked);
- assert(poked.hand.radius>0);
- const int tipX=static_cast<int>(poked.hand.bx-poked.hand.radius+1),tipY=static_cast<int>(poked.hand.by);
- assert(poked.coverage(tipX,tipY)>.99f&&rest.coverage(tipX,tipY)==0);
- assert(poked.hand.radius>=27&&fabsf(poked.hand.bx-poked.hand.ax)<=20);
- assert(memcmp(poked.left,rest.left,sizeof(rest.left))==0);
- assert(memcmp(poked.right,rest.right,sizeof(rest.right))==0);
- assert(memcmp(poked.bottom,rest.bottom,sizeof(rest.bottom))==0);
+ checkSwell(poked,rest,-1);
+ // It reaches the numeral at its row and fades to nothing well away from it.
+ const auto swells=avatar_scene::pokeSwells(scene);
+ assert(swells.side==-1&&swells.edge.amount>=4&&swells.rim.amount==0);
+ assert(poked.left[67]<rest.left[67]-swells.edge.amount+.01f);
+ for(int y=0;y<135;++y)
+  if(fabsf(y+.5f-67.5f)>=swells.edge.width)assert(poked.left[y]==rest.left[y]);
  assert(contactDepth(poked,24,67.5f,14,23,0,-1)>0);
- // Raster span classification still matches the deformed mask's AA oracle.
- float raster[240*135]={};
- poked.raster([&](int x,int y,int n){for(int j=0;j<n;++j)raster[y*240+x+j]=1;},
-              [&](int x,int y,float a){raster[y*240+x]=a;});
- for(int y=0;y<135;++y)for(int x=0;x<240;++x) {
-  const float a=poked.coverage(x,y);
-  assert(isfinite(a)&&a>=0&&a<=1);
-  assert(fabsf(raster[y*240+x]-a)<.0011f);
- }
  // Zero/tiny strength is continuous and keeps the optimized idle path exact.
  scene.poke.strength=0;avatar_scene::buildMask(scene,poked);
  assert(memcmp(&rest,&poked,sizeof(rest))==0);
@@ -89,8 +88,8 @@ int main() {
  auto without=scene;without.poke.strength=0;avatar_scene::buildMask(without,rest);
  assert(memcmp(&rest,&poked,sizeof(rest))==0);
 
- // Reflow, asymmetric rim dips and narrow body support must not crop or split
- // off the hand. Flood-fill every visible hand pixel back to its opaque root.
+ // Reflow, rim flaps and narrow bodies: the swell stays outward-only and
+ // smooth on every layout, and always adds visible skin.
  for(int side=-1;side<=1;side+=2)for(float corners:{0.0f,.05f,.25f,.5f,.75f,.95f,1.0f})
  for(float width:{.75f,1.0f,1.25f}) {
   scene=avatar_scene::Scene{};scene.corners=corners;scene.offset=-side*24*(1-corners);
@@ -100,18 +99,16 @@ int main() {
   scene.poke.side=side;scene.poke.strength=1;
   scene.poke.cx=side<0?24:216;scene.poke.cy=avatar_scene::mix(67.5f,116,corners);
   scene.poke.width=14;scene.poke.height=23;
-  avatar_scene::buildMask(scene,mask);checkAttachedPixels(mask);
-  assert(mask.hand.radius>=27);
-  assert(fabsf(mask.hand.bx-mask.hand.ax)<=20&&fabsf(mask.hand.by-mask.hand.ay)<=16);
-  memset(raster,0,sizeof(raster));
-  mask.raster([&](int x,int y,int n){for(int j=0;j<n;++j)raster[y*240+x+j]=1;},
-              [&](int x,int y,float a){raster[y*240+x]=a;});
+  auto plain=scene;plain.poke.strength=0;
+  avatar_scene::buildMask(plain,rest);avatar_scene::buildMask(scene,mask);
+  checkSwell(mask,rest,side);
   int outside=0;
-  for(int y=0;y<135;++y)for(int x=0;x<240;++x) {
-   assert(fabsf(raster[y*240+x]-mask.coverage(x,y))<.0011f);
-   if(mask.baseCoverage(x,y)==0&&raster[y*240+x]>.99f)++outside;
-  }
-  assert(outside>0);
+  for(int y=0;y<135;++y)for(int x=0;x<240;++x)
+   if(rest.coverage(x,y)==0&&mask.coverage(x,y)>.99f)++outside;
+  // Unless the body already covers the numeral's whole corner of the screen.
+  const int row=static_cast<int>(scene.poke.cy),col=static_cast<int>(scene.poke.cx);
+  const bool room=(side<0?rest.left[row]>.5f:rest.right[row]<239.5f)||rest.bottom[col]<134;
+  assert(outside>0||!room);
  }
 
  // Every clip, both layouts, both sides and fitting/narrow Roman widths:
@@ -138,18 +135,9 @@ int main() {
    surface.step(.033f,scene.body,paired);scene.flowClock=t*.0006f;
    checks.shape(scene,t,at(kDone,strip/2),at(kActive,strip/2),paired?116:67.5f,width,width,
                 font.capHeight,font.capHeight);
+   // As in the frame: the membranes carry the swell and lag behind it.
+   face_physics::Shape carried;avatar_scene::membraneShape(scene,carried);surface.follow(carried);
    avatar_scene::buildMask(scene,mask);
-   if(mask.hand.radius>1) {
-    assert(fabsf(mask.hand.bx-mask.hand.ax)<=20&&fabsf(mask.hand.by-mask.hand.ay)<=16);
-    assert(mask.hand.radius>=1.35f*hypotf(mask.hand.dx,mask.hand.dy));
-    assert(mask.baseCoverage(static_cast<int>(mask.hand.ax),static_cast<int>(mask.hand.ay))>.99f);
-    // Sample the entire hand's spine: no clipped gap anywhere between root/tip.
-    for(int n=0;n<=40;++n) {
-     const int x=static_cast<int>(avatar_scene::mix(mask.hand.ax,mask.hand.bx,n/40.0f));
-     const int y=static_cast<int>(avatar_scene::mix(mask.hand.ay,mask.hand.by,n/40.0f));
-     if(x>=0&&x<240&&y>=0&&y<135)assert(mask.coverage(x,y)>.5f);
-    }
-   }
    const float depth=contactDepth(mask,side<0?strip/2:240-strip/2,paired?116:67.5f,
                                   width,font.capHeight,paired,side);
    spring.update(.033f,depth,true,side);
@@ -192,6 +180,7 @@ int main() {
   scene.eyeX=120+scene.offset+eyes.x;scene.eyeY=67.5f+eyes.y;
   kiss.shape(scene,5200,at(kDone,strip/2),at(kActive,strip/2),67.5f,width,width,font.capHeight,font.capHeight);
   avatar_scene::buildMask(scene,mask);
+  static float raster[240*135];
   memset(raster,0,sizeof(raster));
   avatar_scene::eyes(scene,mask,[&](int x,int y,float a){raster[y*240+x]=a;});
   int mouthPixels=0;

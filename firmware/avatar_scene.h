@@ -102,80 +102,42 @@ inline float profile(float n,float power) {
  if(power==4) { const float n2=n*n;return sqrtf(sqrtf(fmaxf(0,1-n2*n2))); }
  return powf(fmaxf(0,1-powf(n,power)),1/power);
 }
-// A rounded, body-attached extension, unioned with (not clipped by) the base
-// mask. Geometry is prepared once; only its AA fringe needs a square root.
-struct Extrusion {
- float ax=0,ay=0,bx=0,by=0,radius=0,dx=0,dy=0,inverseLength=0;
- float left=0,right=0,top=0,bottom=0,nx=0,ny=0;
- void set(float x0,float y0,float x1,float y1,float r) {
-  ax=x0;ay=y0;bx=x1;by=y1;radius=r;dx=bx-ax;dy=by-ay;
-  const float length=dx*dx+dy*dy;
-  inverseLength=0;
-  float scale=0;
-  if(length>0) { inverseLength=1/length;scale=r/sqrtf(length); }
-  nx=-dy*scale;ny=dx*scale;
-  left=fminf(ax,bx)-r-.5f;right=fmaxf(ax,bx)+r+.5f;
-  top=fminf(ay,by)-r-.5f;bottom=fmaxf(ay,by)+r+.5f;
- }
- float coverage(int x,int y) const {
-  if(radius==0||x+1<=left||x>=right||y+1<=top||y>=bottom)return 0;
-  const float t=face_physics::clamp(((x+.5f-ax)*dx+(y+.5f-ay)*dy)*inverseLength,0,1);
-  const float px=x+.5f-ax-t*dx,py=y+.5f-ay-t*dy;
-  const float squared=px*px+py*py;
-  if(radius>=.5f&&squared<=(radius-.5f)*(radius-.5f))return 1;
-  if(squared>=(radius+.5f)*(radius+.5f))return 0;
-  return face_physics::clamp(radius+.5f-sqrtf(squared),0,1);
- }
- // Exact geometric cross-section for contact, without using the label's hop
- // or the capsule's rectangular candidate bounds as collision evidence.
- bool span(float at,bool vertical,float& lo,float& hi) const {
-  if(radius==0)return false;
-  const float a=vertical?ax:ay,b=vertical?bx:by;
-  const float u=vertical?ay:ax,v=vertical?by:bx;
-  const float n=vertical?nx:ny,m=vertical?ny:nx;
-  lo=1000;hi=-1000;
-  for(int i=0;i<2;++i) {
-   const float distance=at-(i?b:a);
-   if(fabsf(distance)>radius)continue;
-   const float half=sqrtf(fmaxf(0,radius*radius-distance*distance));
-   lo=fminf(lo,(i?v:u)-half);hi=fmaxf(hi,(i?v:u)+half);
-  }
-  const float xs[]={a+n,b+n,b-n,a-n};
-  const float ys[]={u+m,v+m,v-m,u-m};
-  for(int i=0;i<4;++i) {
-   const int j=(i+1)&3;
-   if(at<fminf(xs[i],xs[j])||at>fmaxf(xs[i],xs[j]))continue;
-   if(xs[i]==xs[j]) { lo=fminf(lo,fminf(ys[i],ys[j]));hi=fmaxf(hi,fmaxf(ys[i],ys[j])); }
-   else {
-    const float value=ys[i]+(at-xs[i])/(xs[j]-xs[i])*(ys[j]-ys[i]);
-    lo=fminf(lo,value);hi=fmaxf(hi,value);
-   }
-  }
-  return hi>=lo;
+// Local swellings: a smooth bell of outward pixels along one edge. It has
+// gentle inflections where it rejoins the body (no tangent lines, no union
+// crease) and is exactly zero outside its width, so idle masks stay exact.
+inline float bell(float t) {
+ t*=t;
+ if(t>=1)return 0;
+ const float u=1-t;
+ return u*u*u;
+}
+struct Swell {
+ float amount=0,center=0,width=1;
+ float at(float position) const {
+  if(amount==0)return 0;
+  return amount*bell((position-center)/width);
  }
 };
+// A counter check's reach: the side facing the numeral swells toward it in
+// vertical layouts, the lower rim swells down onto it in the paired layout
+// (reflow blends the two). `side` is -1 (left) or +1 (right).
+struct Swells {
+ int side=0;
+ Swell edge,rim;
+};
+// Coverage of pixel column x by the horizontal span [left, right).
+inline float spanCoverage(float left,float right,int x) {
+ return face_contour::coverage(left,right,x);
+}
 struct Mask {
  float left[135]={},right[135]={},bottom[240]={};
- Extrusion hand;
- // A row-prepared skin fillet joins a side reach without changing the base
- // used to clip the eyes. Zero side keeps the original no-hand fast path.
- float shoulder[135]={};
- int shoulderSide=0,shoulderTop=135,shoulderBottom=-1;
  // Step-over foot: per row, a span from the outer edge to an opaque body root.
  float stepEdge[135]={},stepRoot[135]={};
  int stepSide=0,stepTop=135,stepBottom=-1;
  float stepCoverage(int x,int y) const {
   if(!stepSide||y<stepTop||y>stepBottom)return 0;
-  return stepSide<0?face_contour::coverage(stepEdge[y],stepRoot[y],x):
-                    face_contour::coverage(stepRoot[y],stepEdge[y],x);
- }
- float shoulderCoverage(int x,int y) const {
-  if(!shoulderSide||y<shoulderTop||y>shoulderBottom)return 0;
-  if(shoulderSide<0&&shoulder[y]<left[y])
-   return face_contour::coverage(shoulder[y],left[y]+2,x);
-  if(shoulderSide>0&&shoulder[y]>right[y])
-   return face_contour::coverage(right[y]-2,shoulder[y],x);
-  return 0;
+  if(stepSide<0)return spanCoverage(stepEdge[y],stepRoot[y],x);
+  return spanCoverage(stepRoot[y],stepEdge[y],x);
  }
  float baseCoverage(int x,int y) const {
   if(x<0||x>=240||y<0||y>=135)return 0;
@@ -188,30 +150,14 @@ struct Mask {
  }
  float coverage(int x,int y) const {
   const float base=baseCoverage(x,y);
-  if(base==1||(hand.radius==0&&!stepSide)||x<0||x>=240||y<0||y>=135)return base;
-  float value=base;
-  if(hand.radius!=0)value=fmaxf(fmaxf(value,hand.coverage(x,y)),shoulderCoverage(x,y));
-  return stepSide?fmaxf(value,stepCoverage(x,y)):value;
+  if(base==1||!stepSide||x<0||x>=240||y<0||y>=135)return base;
+  return fmaxf(base,stepCoverage(x,y));
  }
- float bottomAt(int x) const {
-  float lo,hi;
-  float value=hand.span(x+.5f,true,lo,hi)?fmaxf(bottom[x],hi):bottom[x];
-  // Contact follows the actual added skin too, never a label's own hop.
-  if(shoulderSide)for(int y=shoulderTop;y<=shoulderBottom;++y)
-   if(shoulderCoverage(x,y)>.5f)value=fmaxf(value,y+1.0f);
-  return value;
- }
+ float bottomAt(int x) const { return bottom[x]; }
  void rowBounds(int y,float& lo,float& hi) const {
   lo=left[y];hi=right[y];
-  if(shoulderSide<0&&y>=shoulderTop&&y<=shoulderBottom)lo=fminf(lo,shoulder[y]);
-  if(shoulderSide>0&&y>=shoulderTop&&y<=shoulderBottom)hi=fmaxf(hi,shoulder[y]);
   if(stepSide<0&&y>=stepTop&&y<=stepBottom&&stepEdge[y]<stepRoot[y])lo=fminf(lo,stepEdge[y]);
   if(stepSide>0&&y>=stepTop&&y<=stepBottom&&stepEdge[y]>stepRoot[y])hi=fmaxf(hi,stepEdge[y]);
-  float a,b;
-  if(hand.span(y+.5f,false,a,b)) {
-   if(hi<=lo){lo=a;hi=b;}
-   else {lo=fminf(lo,a);hi=fmaxf(hi,b);}
-  }
  }
  // Produce the same .999-threshold opaque runs as firmware's old pixel scan.
  // Block minima are recomputed from bottom[] so manually edited masks are safe.
@@ -225,14 +171,6 @@ struct Mask {
   for(int y=0;y<135;++y) {
    int first=static_cast<int>(floorf(left[y]));
    int end=static_cast<int>(ceilf(right[y]));
-   if(hand.radius>0&&y+1>hand.top&&y<hand.bottom) {
-    first=static_cast<int>(fminf(first,floorf(hand.left)));
-    end=static_cast<int>(fmaxf(end,ceilf(hand.right)));
-   }
-   if(y>=shoulderTop&&y<=shoulderBottom) {
-    if(shoulderSide<0)first=static_cast<int>(fminf(first,floorf(shoulder[y])));
-    if(shoulderSide>0)end=static_cast<int>(fmaxf(end,ceilf(shoulder[y])));
-   }
    if(y>=stepTop&&y<=stepBottom) {
     if(stepSide<0)first=static_cast<int>(fminf(first,floorf(stepEdge[y])));
     if(stepSide>0)end=static_cast<int>(fmaxf(end,ceilf(stepEdge[y])));
@@ -307,20 +245,80 @@ inline float unusedSideStretch(const Scene& scene) {
 inline float softSides(const Scene& scene) {
  return (1-scene.corners)*(1-scene.alert)*(1-.8f*scene.sleep)*scene.side;
 }
-// `soft` and `stretch` are softSides(scene) and unusedSideStretch(scene), the
-// same for every row.
-inline bool sideBounds(const Scene& scene,const Geometry& g,const fluid_face::Frame& fluid,
-                       float soft,float stretch,int y,float& left,float& right) {
- left=right=0;
- float ny=(y+.5f-g.cy)/g.ry;
+// Rigid half width of the body at row centre `at` (no membrane, flow or
+// swell): what a reach measures its distance from. Negative outside the body.
+inline float rigidHalf(const Scene& scene,const Geometry& g,float soft,float at) {
+ float ny=(at-g.cy)/g.ry;
  // The lower spring rim, not a rigid ellipse cap, decides which pixels exist
  // around the support. This permits free overhangs below the contact plane.
  if(ny>.85f)ny=mix(ny,.85f,scene.corners);
- if(fabsf(ny)>=1)return false;
+ if(fabsf(ny)>=1)return -1;
  float half=g.rx*profile(fabsf(ny),g.power);
  // A standing blob settles: narrower shoulders and a heavier lower belly,
  // so the side reads as a drop rather than a rigid parenthesis.
  if(soft!=0)half*=1+.11f*soft*(ny+.35f*(1-ny*ny)-.35f);
+ return half;
+}
+// Rigid lower envelope at column centre `at`, before flaps, drift and
+// swells. `widen`/`stretch` are buildMask's; -1000 outside the body.
+inline float rigidBottom(const Geometry& g,float widen,float stretch,float at) {
+ float nx=fabsf((at-g.cx)/g.rx);
+ if(widen!=1)nx/=widen;
+ // Use the same one-sided stretch for the lower envelope; extending only
+ // row bounds would leave a curved blue sliver clipped by the old oval bottom.
+ if(stretch*(at-g.cx)>0)nx/=1+fabsf(stretch);
+ if(nx>=1)return -1000;
+ return g.cy+g.ry*profile(nx,g.power);
+}
+// A counter check swells the body toward its numeral: the facing side in a
+// vertical layout, the lower rim in the paired layout, blended through reflow.
+// The reach is measured from the rigid outline, so the membrane's own motion
+// never feeds back into it, and a fixed width per check lets the bell grow in
+// place instead of sliding. Zero strength is exactly no swell.
+// The bell widens with the reach: a narrow bell added at the oval's widest
+// point concentrates the bend at the numeral and leaves straight flanks.
+constexpr float kSwellBase=40,kSwellGrowth=5;
+// The paired rim meets the numeral on its rising flank, not at its extreme,
+// so a narrower bell already reads as a soft swelling there.
+constexpr float kRimSwellBase=30,kRimSwellGrowth=3;
+inline Swells pokeSwells(const Scene& scene,const Geometry& g,float soft,float widen,float stretch) {
+ Swells out;
+ const auto& p=scene.poke;
+ const float strength=fmaxf(0,p.strength)*(1-scene.alert)*(1-scene.sleep);
+ if(strength==0||p.side==0)return out;
+ out.side=p.side<0?-1:1;
+ const float narrow=mix(1,.9f,p.kiss);  // an affectionate check is a little more pointed
+ const float lateral=strength*(1-scene.corners),vertical=strength*scene.corners;
+ if(lateral>0) {
+  const float half=rigidHalf(scene,g,soft,p.cy);
+  if(half>0) {
+   const float edge=g.cx+out.side*half;
+   const float reach=face_physics::clamp(out.side*(p.cx-out.side*p.width/2-edge)+4,4,18);
+   out.edge.amount=reach*lateral;out.edge.center=p.cy;
+   out.edge.width=(kSwellBase+kSwellGrowth*reach)*narrow;
+  }
+ }
+ if(vertical>0) {
+  const float rim=rigidBottom(g,widen,stretch,p.cx);
+  if(rim>-1000) {
+   const float lower=face_physics::clamp(p.cy-p.height/2-rim+4,4,14);
+   out.rim.amount=lower*vertical;out.rim.center=p.cx;
+   out.rim.width=(kRimSwellBase+kRimSwellGrowth*lower)*narrow;
+  }
+ }
+ return out;
+}
+inline Swells pokeSwells(const Scene& scene) {
+ const float soft=softSides(scene);
+ return pokeSwells(scene,geometry(scene),soft,1+.4f*soft,unusedSideStretch(scene));
+}
+// `soft` and `stretch` are softSides(scene) and unusedSideStretch(scene), the
+// same for every row; `swells` is pokeSwells for the same scene.
+inline bool sideBounds(const Scene& scene,const Geometry& g,const fluid_face::Frame& fluid,
+                       float soft,float stretch,const Swells& swells,int y,float& left,float& right) {
+ left=right=0;
+ const float half=rigidHalf(scene,g,soft,y+.5f);
+ if(half<0)return false;
  const float bend=scene.surface?scene.surface->sample(y/280.0f)*.18f:0;
  const float other=scene.surface?scene.surface->sample(1-y/280.0f)*.18f:0;
  const float flow=(1-.8f*scene.sleep)*scene.side;
@@ -334,6 +332,8 @@ inline bool sideBounds(const Scene& scene,const Geometry& g,const fluid_face::Fr
   left+=soft*scene.surface->edgeSample(0,y+.5f);
   right+=soft*scene.surface->edgeSample(1,y+.5f);
  }
+ if(swells.side<0)left-=swells.edge.at(y+.5f);
+ else if(swells.side>0)right+=swells.edge.at(y+.5f);
  if(stretch>0)right+=(right-g.cx)*stretch;
  else if(stretch<0)left+=(g.cx-left)*stretch;
  left=fmaxf(0,fminf(240,left));right=fmaxf(0,fminf(240,right));
@@ -342,95 +342,15 @@ inline bool sideBounds(const Scene& scene,const Geometry& g,const fluid_face::Fr
 // Compatibility/read handle for tests of the side envelope. The complete face
 // mask also includes the freely moving lower rim and may have multiple runs.
 inline bool bounds(const Scene& scene,int y,float& left,float& right) {
- return sideBounds(scene,geometry(scene),fluid_face::Frame(scene.flowClock),softSides(scene),
-                   unusedSideStretch(scene),y,left,right);
-}
-// Lower convex envelope of row samples, in O(rows), without a pixel loop.
-// A tangent bridge fills a hard circle/body union's inward crease. Subtract
-// the BASE envelope below so existing organic inflections are not flattened.
-inline void convexEnvelope(float* edge) {
- int rows[135],count=0;
- for(int y=0;y<135;++y) {
-  while(count>=2) {
-   const int a=rows[count-2],b=rows[count-1];
-   if((edge[b]-edge[a])*(y-b)<(edge[y]-edge[b])*(b-a))break;
-   --count;
-  }
-  rows[count++]=y;
- }
- for(int i=1;i<count;++i) {
-  const int a=rows[i-1],b=rows[i];
-  const float first=edge[a],last=edge[b];
-  for(int y=a+1;y<b;++y)edge[y]=mix(first,last,(y-a)/static_cast<float>(b-a));
- }
-}
-inline void roundShoulder(const Scene& scene,Mask& mask) {
- const float weight=(1-scene.corners)*(1-scene.alert)*(1-scene.sleep);
- if(weight<=0||mask.hand.radius==0)return; // paired/request/sleep stay exact
- const int side=scene.poke.side<0?-1:1;
- const float sign=side<0?1.0f:-1.0f;
- const float* original=side<0?mask.left:mask.right;
- float base[135];
- for(int y=0;y<135;++y) {
-  base[y]=mask.shoulder[y]=original[y]*sign;
-  float lo,hi;
-  if(mask.hand.span(y+.5f,false,lo,hi))
-   mask.shoulder[y]=fminf(mask.shoulder[y],(side<0?lo:hi)*sign);
- }
- convexEnvelope(base);convexEnvelope(mask.shoulder);
- for(int y=0;y<135;++y) {
-  float outward=fmaxf(0,base[y]-mask.shoulder[y])*weight;
-  // Every added row attaches to opaque BODY coverage, including during
-  // reflow. Do not bridge a lower-rim hole or emit floating skin/white detail.
-  const int root=static_cast<int>(side<0?ceilf(original[y])+1:floorf(original[y])-2);
-  if(root<0||root>=240||mask.baseCoverage(root,y)<.999f)outward=0;
-  mask.shoulder[y]=original[y]-sign*outward;
-  if(outward>0) {
-   mask.shoulderSide=side;
-   if(y<mask.shoulderTop)mask.shoulderTop=y;
-   mask.shoulderBottom=y;
-  }
- }
-}
-inline void deformMask(const Scene& scene,Mask& mask) {
- mask.hand=Extrusion{};
- mask.shoulderSide=0;mask.shoulderTop=135;mask.shoulderBottom=-1;
- for(float& edge:mask.shoulder)edge=0;
- const auto& p=scene.poke;
- const float strength=fmaxf(0,p.strength)*(1-scene.alert)*(1-scene.sleep);
- if(strength==0||p.side==0)return;
- // A resistant body makes a broad shoulder, not a long thin finger. Keep the
- // radius larger than the permitted outward travel, even on affectionate checks.
- const float radius=mix(30,27,p.kiss);
- const int row=static_cast<int>(fmaxf(0,fminf(134,p.cy)));
- const int col=static_cast<int>(fmaxf(0,fminf(239,p.cx)));
- const float edge=p.side<0?mask.left[row]:mask.right[row];
- const float reach=face_physics::clamp(p.side*(p.cx-p.side*p.width/2-edge)+4,4,18);
- const float lower=face_physics::clamp(p.cy-p.height/2-mask.bottom[col]+4,4,14);
- // Blend attachment direction through reflow. The root is inside the actual
- // base silhouette, not on a guessed ellipse edge or underneath a clipped rim.
- float rootX=mix(edge-p.side*(radius+2),p.cx,scene.corners);
- float rootY=mix(p.cy,mask.bottom[col]-radius-2,scene.corners);
- rootX=face_physics::clamp(rootX,0,239);
- rootY=face_physics::clamp(rootY,0,134);
- // Find an opaque attachment toward the body center if noise, a flap, narrow
- // geometry or reflow put the first root outside. Never emit a detached hand.
  const Geometry g=geometry(scene);
- for(int step=0;step<80&&mask.baseCoverage(static_cast<int>(rootX),static_cast<int>(rootY))<.999f;++step) {
-  rootX+=face_physics::clamp(g.cx-rootX,-1,1);
-  rootY+=face_physics::clamp(g.cy-rootY,-1,1);
-  rootX=face_physics::clamp(rootX,0,239);rootY=face_physics::clamp(rootY,0,134);
- }
- if(mask.baseCoverage(static_cast<int>(rootX),static_cast<int>(rootY))<.999f)return;
- const float tipX=rootX+p.side*(2+reach)*strength*(1-scene.corners);
- const float tipY=rootY+(2+lower)*strength*scene.corners;
- mask.hand.set(rootX,rootY,tipX,tipY,radius*eye_acting::smooth(strength/.25f));
- roundShoulder(scene,mask);
+ const float soft=softSides(scene),stretch=unusedSideStretch(scene);
+ return sideBounds(scene,g,fluid_face::Frame(scene.flowClock),soft,stretch,
+                   pokeSwells(scene,g,soft,1+.4f*soft,stretch),y,left,right);
 }
 // Step-over foot. The front is a rounded nose (lower body first, rising a
 // little mid-stride) that sweeps out and plants past the screen edge; upper
 // rows follow. Every row attaches to opaque BASE coverage; it is unioned with
-// the base like the shoulder, and never moves the eyes' clipping body.
+// the base, and never moves the eyes' clipping body.
 constexpr float kStepLag=.6f,kStepPlant=8;
 inline float stepWeight(float progress,int y) {
  if(progress<=0)return 0;
@@ -468,11 +388,47 @@ inline void stepMask(const Scene& scene,Mask& mask) {
   }
  }
 }
-// Sorting blobs: a rounded U-shaped lobe (circular tip, as wide as the
-// numeral plus a margin) grows down out of the lower rim, joined to it by a
-// smooth-max fillet, so it is one soft body with no crease or detached part.
-// It only lowers existing body columns: a lobe can never float.
-constexpr float kLobeFillet=7;
+// Sorting blobs grow out of the lower rim as pseudopods, not pegs. The rim
+// around each one sags with it (a bell of kLobeSag of its drop, wider as it
+// gets longer). The blob has a round tip as wide as the numeral plus a margin;
+// below the flank angle the tip circle hands over to a concave skirt that
+// leaves along the circle's tangent and meets the rim tangentially, so a long
+// blob widens into the body instead of hanging from it on parallel walls.
+// Everything is measured from the local rim and only lowers existing body
+// columns, so a blob can never float or detach.
+constexpr float kLobeSag=.25f,kLobeFillet=7;
+// Where the tip circle hands over to the skirt: 64 degrees from straight
+// down (sin, cos, tan), and the skirt's width per pixel of its height.
+constexpr float kLobeFlareSin=.8988f,kLobeFlareCos=.4384f,kLobeFlareTan=2.0503f;
+constexpr float kLobeSkirt=2.2f/kLobeFlareTan;
+inline Swell lobeSag(const Scene& scene,const Geometry& g,float widen,float stretch,int i) {
+ Swell sag;
+ const float reach=fminf(1,scene.hands.reach[i]),radius=scene.hands.halfWidth[i];
+ if(reach<=0||radius<=0)return sag;
+ const float rim=rigidBottom(g,widen,stretch,scene.hands.x[i]);
+ if(rim<=-1000)return sag;
+ const float drop=fmaxf(0,scene.hands.y[i]-rim)*eye_acting::smooth(reach);
+ sag.amount=kLobeSag*drop;sag.center=scene.hands.x[i];sag.width=2*radius+drop;
+ return sag;
+}
+// How far below the local rim the blob reaches at distance d from its axis.
+// `drop` is the tip's depth below the rim at the axis; negative while the tip
+// is still inside the body. Beyond the skirt it keeps falling away, so the
+// small emergence fillet below always closes inside the blob's window.
+inline float lobeDepth(float d,float drop,float radius) {
+ const float shoulder=radius*kLobeFlareSin;
+ const float joint=drop-radius*(1-kLobeFlareCos);  // depth where the skirt starts
+ if(d<shoulder)return drop-radius+sqrtf(radius*radius-d*d);
+ if(joint<=0)return joint-(d-shoulder)*kLobeFlareTan;
+ // Cubic Hermite from (joint, circle tangent) to (0, flat): concave, no
+ // overshoot (|end slope| stays below 3 in unit coordinates).
+ const float width=kLobeSkirt*joint,along=d-shoulder,t=along/width;
+ // Past the skirt: flat at first, approaching the no-skirt branch's line as
+ // the skirt shrinks to nothing, so the shape is continuous as it appears.
+ if(t>=1)return -kLobeFlareTan*(along-width)*(along-width)/along;
+ const float slope=-kLobeFlareTan*width/joint;
+ return joint*((2*t-3)*t*t+1+slope*((t-2)*t+1)*t);
+}
 inline void lobeMask(const Scene& scene,Mask& mask) {
  for(int i=0;i<2;++i) {
   const float reach=fminf(1,scene.hands.reach[i]),radius=scene.hands.halfWidth[i];
@@ -481,15 +437,36 @@ inline void lobeMask(const Scene& scene,Mask& mask) {
   const int center=static_cast<int>(face_physics::clamp(cx,0,239));
   if(mask.bottom[center]<0)continue;
   // Grow out of the rim: the circular tip starts hidden inside the body.
-  const float tip=mix(mask.bottom[center]-radius,scene.hands.y[i],eye_acting::smooth(reach));
-  const int first=static_cast<int>(fmaxf(0,floorf(cx-radius-kLobeFillet)));
-  const int last=static_cast<int>(fminf(239,ceilf(cx+radius+kLobeFillet)));
+  const float rim=mask.bottom[center];
+  const float drop=mix(-radius,scene.hands.y[i]-rim,eye_acting::smooth(reach));
+  // A small fillet softens the crease while only the tip cap shows; it
+  // fades out as the skirt (which already meets the rim smoothly) takes over.
+  const float joint=drop-radius*(1-kLobeFlareCos);
+  const float fillet=kLobeFillet*face_physics::clamp(1-joint/radius,0,1);
+  const float skirt=kLobeSkirt*fmaxf(0,joint);
+  const float extent=radius+skirt+fillet+sqrtf(fillet*(skirt+fillet)/kLobeFlareTan)+1;
+  const int first=static_cast<int>(fmaxf(0,floorf(cx-extent)));
+  const int last=static_cast<int>(fminf(239,ceilf(cx+extent)));
   for(int x=first;x<=last;++x) {
    if(mask.bottom[x]<0)continue;
-   const float d=x+.5f-cx;
-   const float lobe=fabsf(d)<radius?tip-radius+sqrtf(radius*radius-d*d):-1000;
-   mask.bottom[x]=fmaxf(mask.bottom[x],smoothMax(mask.bottom[x],lobe,kLobeFillet));
+   const float depth=lobeDepth(fabsf(x+.5f-cx),drop,radius);
+   mask.bottom[x]+=fillet>0?smoothMax(0,depth,fillet):fmaxf(0,depth);
   }
+ }
+}
+// The authored deformations the membranes carry (face_physics::Surface::
+// follow): the check swells and the sorting sags, sampled at the nodes.
+inline void membraneShape(const Scene& scene,face_physics::Shape& shape) {
+ shape=face_physics::Shape{};
+ const Geometry g=geometry(scene);
+ const float soft=softSides(scene),stretch=unusedSideStretch(scene),widen=1+.4f*soft;
+ const Swells swells=pokeSwells(scene,g,soft,widen,stretch);
+ if(swells.side)for(int i=0;i<face_physics::kEdgeNodes;++i)
+  shape.side[swells.side>0][i]=swells.edge.at(face_physics::edgeRow(i));
+ const Swell sags[2]={lobeSag(scene,g,widen,stretch,0),lobeSag(scene,g,widen,stretch,1)};
+ for(int i=0;i<face_physics::kRimNodes;++i) {
+  const float at=face_physics::rimX(i)+.5f;
+  shape.rim[i]=swells.rim.at(at)+sags[0].at(at)+sags[1].at(at);
  }
 }
 inline void buildMask(const Scene& scene,Mask& mask) {
@@ -500,24 +477,21 @@ inline void buildMask(const Scene& scene,Mask& mask) {
  const float soft=softSides(scene);
  const float widen=1+.4f*soft;
  const fluid_face::Frame fluid(scene.flowClock);
- for(int y=0;y<135;++y)sideBounds(scene,g,fluid,soft,stretch,y,mask.left[y],mask.right[y]);
+ const Swells swells=pokeSwells(scene,g,soft,widen,stretch);
+ for(int y=0;y<135;++y)sideBounds(scene,g,fluid,soft,stretch,swells,y,mask.left[y],mask.right[y]);
+ const Swell sags[2]={lobeSag(scene,g,widen,stretch,0),lobeSag(scene,g,widen,stretch,1)};
  for(int x=0;x<240;++x) {
-  float nx=fabsf((x+.5f-g.cx)/g.rx);
-  if(widen!=1)nx/=widen;
-  // Use the same one-sided stretch for the lower envelope; extending only
-  // row bounds would leave a curved blue sliver clipped by the old oval bottom.
-  if(stretch*(x+.5f-g.cx)>0)nx/=1+fabsf(stretch);
-  if(nx>=1){mask.bottom[x]=-1000;continue;}
-  const float base=g.cy+g.ry*profile(nx,g.power);
+  const float base=rigidBottom(g,widen,stretch,x+.5f);
+  if(base<=-1000){mask.bottom[x]=-1000;continue;}
   const float flap=scene.surface?scene.surface->sample(x/239.0f):0;
   // Settled vertical layouts have no lower-rim drift; do not evaluate unused
   // noise. No epsilon/threshold gate that could make the reflow silhouette pop.
   const float drift=scene.corners==0?0:
                     1.4f*fluid_face::field(x,g.floor,fluid)*scene.corners;
-  mask.bottom[x]=base+(flap+drift)*(1-.8f*scene.sleep);
+  mask.bottom[x]=base+(flap+drift)*(1-.8f*scene.sleep)+
+                 swells.rim.at(x+.5f)+sags[0].at(x+.5f)+sags[1].at(x+.5f);
  }
  lobeMask(scene,mask);
- deformMask(scene,mask);
  stepMask(scene,mask);
 }
 // Visual-only height trim: leave body/mouth anchors and authored clocks intact.

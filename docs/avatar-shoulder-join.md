@@ -1,5 +1,9 @@
 # Side-reach shoulder junction correction
 
+> Superseded by the [soft-body outline](avatar-soft-body.md): the capsule hand,
+> skin fillet and convex envelopes described here are gone, and
+> `tests/test_shoulder_join.cpp` became `tests/test_check_swell.cpp`.
+
 ## User feedback and reproduction
 
 On-device smoothness after the continuity work (`ec7c99e`) was good, but a

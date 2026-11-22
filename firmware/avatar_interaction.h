@@ -120,9 +120,10 @@ struct Checks {
   if(!surface||!which)return;
   // The authored press excites the nearby free rim; numerals still react
   // only if that travelling contour actually reaches their resting bounds.
-  const float center=which<0?4:27;  // rim nodes near that screen side
-  for(int i=0;i<face_physics::Surface::count;++i) {
-   const float distance=(i-center)/2.8f;
+  using face_physics::Surface;
+  const float center=Surface::node(which<0?4/31.0f:27/31.0f);  // rim near that screen side
+  for(int i=0;i<Surface::count;++i) {
+   const float distance=(i-center)/Surface::node(2.8f/31);
    surface->velocity[i]+=40*expf(-.5f*distance*distance);
   }
  }

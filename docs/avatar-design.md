@@ -21,8 +21,11 @@ interruptible doze/wake/recovery, target-relative gaze, per-eye shape controls,
 seeded quiet phrasing and sparse event-only completion glints. Status notes
 below are snapshots of their respective revisions.
 
-The retreat crease on both completed-only left and active-only right edges is
-corrected in the [shoulder-junction patch](avatar-shoulder-join.md).
+The retreat crease on both completed-only left and active-only right edges was
+corrected in the [shoulder-junction patch](avatar-shoulder-join.md). The
+[soft-body outline](avatar-soft-body.md) later replaced that hand and its convex
+fillet with membrane-carried swells, gave the lower rim soft contact and
+short-ripple damping, and turned the sorting blobs into pseudopods.
 
 ## Goal
 

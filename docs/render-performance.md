@@ -19,7 +19,10 @@ fillet and skips unused vertical contact only at exactly zero corner reflow. All
 nonzero reflows retain both contact components. Base masks/eye clipping,
 acting/frame/transport clocks and historical occupancy costs are unchanged. The
 new source remains deliberately uncalibrated; native geometry metrics and
-compilation must not become a physical FPS claim.
+compilation must not become a physical FPS claim. The [soft-body
+outline](avatar-soft-body.md) later removed this fillet and the hand (a check is
+now a swell in the edges themselves) and doubled the lower-rim nodes to 64: host
+update +0.4µs and mask +0.2µs per frame, ESP32 cost not yet measured.
 
 ## Continuity director — unmeasured revision (2026-11-04)
 
