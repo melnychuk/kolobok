@@ -1,6 +1,6 @@
 import { loadAvatar, STATES } from "./avatar.js";
 import { SHELLS } from "./device.js";
-import { SCREEN, WAKE_AT, WAKE_FROM, WAKE_MS, introDist, introLift, introScreenBottom, narrow, showTitle } from "./intro.js";
+import { SCREEN, WAKE_AT, WAKE_FROM, WAKE_MS, fitSleepyEyes, introDist, introLift, introScreenBottom, measureSlits, narrow, showTitle } from "./intro.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -695,6 +695,10 @@ async function main() {
   let revealed = false;
   function wake() {
     revealed = true;
+    // Put the CSS eyes exactly over this frame's (the dozing face breathes),
+    // so the crossfade shows one pair of eyes.
+    const slits = measureSlits(avatar.rgba);
+    if (slits) fitSleepyEyes(stage, slits);
     stage.classList.add("ready");
     device.wakeZoom?.(WAKE_FROM, WAKE_MS);
     // The title arrives with the face: it starts fading in a little before

@@ -24,20 +24,53 @@ export const introLift = () => (narrow() ? 0.16 : 0.15);
 // Vertical field of view: keeps the whole stick in frame on narrow screens.
 export const fovFor = (w, h) => (w / h < 1.1 ? Math.min(52, 26 * (1.25 / Math.max(0.5, w / h))) : 26);
 
-// Sleeping slits measured from the firmware frame (240×135): 33×3 px each,
-// 18 px apart, centred 12 px below the middle of the screen.
+// Sleeping slits measured from the firmware frame (240×135), the fallback
+// until the renderer's first frame: 33×3 px each, 12 px apart, centred 8 px
+// below the middle of the screen. The dozing face breathes, so main.js refits
+// them from that frame (measureSlits) right before the handoff.
 const PX = SCREEN.w / 240;
-export function fitSleepyEyes(stage = document.getElementById("stage")) {
+const SLITS = { w: 33, h: 3, gap: 12, x: 0, y: 8 };
+export function fitSleepyEyes(stage = document.getElementById("stage"), slits = SLITS) {
   if (!stage) return;
   const { clientWidth: w, clientHeight: h } = stage;
   if (!w || !h) return;
   const distance = introDist() * WAKE_FROM - FACE_Z;
   const scale = h / (2 * distance * Math.tan(((fovFor(w, h) / 2) * Math.PI) / 180)); // px per mm
   const set = (name, mm, min = 0) => stage.style.setProperty(name, `${Math.max(min, mm * scale).toFixed(2)}px`);
-  set("--slit-w", 33 * PX);
-  set("--slit-h", 3 * PX, 1.5);
-  set("--slit-gap", 18 * PX);
-  stage.style.setProperty("--slit-y", `${(12 * PX * scale - introLift() * h).toFixed(2)}px`);
+  set("--slit-w", slits.w * PX);
+  set("--slit-h", slits.h * PX, 1.5);
+  set("--slit-gap", slits.gap * PX);
+  stage.style.setProperty("--slit-x", `${(slits.x * PX * scale).toFixed(2)}px`);
+  stage.style.setProperty("--slit-y", `${(slits.y * PX * scale - introLift() * h).toFixed(2)}px`);
+}
+
+// The two sleeping slits in an RGBA frame (240×135, light eyes on a dark
+// face), as fitSleepyEyes geometry in screen pixels: width, thickness and gap
+// from each eye's coverage, offsets of the pair's centre from the screen's.
+// Null when the frame doesn't show two slits.
+export function measureSlits(rgba) {
+  const eyes = [0, 1].map((side) => {
+    let mass = 0, sumX = 0, sumY = 0, left = 240, right = -1;
+    for (let y = 0; y < 135; y++) {
+      for (let x = side * 120; x < side * 120 + 120; x++) {
+        const i = (y * 240 + x) * 4;
+        const a = Math.min(1, (rgba[i] + rgba[i + 1] + rgba[i + 2]) / 735);
+        if (a < 0.05) continue;
+        mass += a; sumX += a * (x + 0.5); sumY += a * (y + 0.5);
+        if (a > 0.5) { left = Math.min(left, x); right = Math.max(right, x + 1); }
+      }
+    }
+    return right > left ? { mass, cx: sumX / mass, cy: sumY / mass, left, right } : null;
+  });
+  if (!eyes[0] || !eyes[1]) return null;
+  const w = (eyes[0].right - eyes[0].left + eyes[1].right - eyes[1].left) / 2;
+  const h = (eyes[0].mass + eyes[1].mass) / (2 * w);
+  if (h > 8) return null; // open eyes, not slits
+  return {
+    w, h, gap: eyes[1].left - eyes[0].right,
+    x: (eyes[0].left + eyes[1].right) / 2 - 120,
+    y: (eyes[0].cy + eyes[1].cy) / 2 - 67.5,
+  };
 }
 
 // Where the woken intro screen ends, in px from the top of the stage.

@@ -60,7 +60,9 @@ body::after {
   background: radial-gradient(40% 35% at 50% 58%, color-mix(in srgb, var(--mood) 38%, transparent), transparent 70%);
   transition: background 1.2s;
 }
-.canvas-host { position: absolute; inset: 0; opacity: 0; transition: opacity .7s ease-out; }
+/* The handoff from the CSS sleeping eyes is a quick crossfade: the wake dolly
+   starts at once, and during a long fade both pairs of eyes show, apart. */
+.canvas-host { position: absolute; inset: 0; opacity: 0; transition: opacity .15s linear; }
 /* Herdr chapter: js/main.js scrubs the stick to the left and brings the real
    screenshots in from the right, beside the copy (or above it on phones). */
 .stage.herdr-handoff .canvas-host { translate: calc(-120% * var(--stick-flight)) 0; pointer-events: none; }
@@ -86,11 +88,11 @@ body::after {
 .bp-tag { font: 600 11px var(--mono); color: #0b1f3a; background: var(--yellow); padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
 .bp-callout { background: var(--sky); }
 /* Asleep while the renderer loads: the firmware's sleeping slits, sized by
-   js/intro.js to match the first 3D frame exactly, breathing slowly. */
+   js/intro.js to match the 3D frame they hand over to, breathing slowly. */
 .loading {
   position: absolute; inset: 0; display: grid; place-content: center; grid-auto-flow: column;
-  gap: var(--slit-gap, 1.26vh); transform: translateY(var(--slit-y, .87vh));
-  transition: opacity .7s ease-in; pointer-events: none;
+  gap: var(--slit-gap, .84vh); transform: translate(var(--slit-x, 0px), var(--slit-y, .58vh));
+  transition: opacity .15s linear; pointer-events: none;
 }
 .loading span {
   width: var(--slit-w, 2.29vh); height: var(--slit-h, 2px); border-radius: 99px; background: var(--eye);
