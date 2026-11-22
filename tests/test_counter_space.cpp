@@ -6,8 +6,6 @@
 #define main native_preview_main
 #include "preview_avatar.cpp"
 #undef main
-#define STICK_AVATAR_WIDGET_NO_MAIN
-#include "../experiments/avatar-widget/main.cpp"
 
 static bool near(float a,float b,float tolerance=.001f) { return fabsf(a-b)<tolerance; }
 // The face leans away from a wide label: toward the active side for done.

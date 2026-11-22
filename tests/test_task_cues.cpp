@@ -8,8 +8,6 @@
 #define main native_preview_main
 #include "preview_avatar.cpp"
 #undef main
-#define STICK_AVATAR_WIDGET_NO_MAIN
-#include "../experiments/avatar-widget/main.cpp"
 
 using task_cues::Arrival;
 using task_cues::Transfer;
@@ -289,15 +287,15 @@ static void splitCompletions() {
   Preview p(0,2,mode);bool started=false,covered=false;
   for(uint32_t ms=0;ms<=7400;ms+=33) {
    p.step(ms);
-   if(ms<2600)assert(p.done==0&&p.active==2&&p.shownDone==0&&p.shownActive==2&&!p.transfer.busy(ms));
-   if(p.transfer.busy(ms)) {
+   if(ms<2600)assert(p.stick.doneCount==0&&p.stick.activeCount==2&&p.stick.shownDone==0&&p.stick.shownActive==2&&!p.stick.taskTransfer.busy(p.now()));
+   if(p.stick.taskTransfer.busy(p.now())) {
     started=true;
-    assert(p.transfer.oldActive==2&&p.transfer.newDone==1&&p.transfer.newActive==1);
-    if(p.transfer.phase(ms)<Transfer::kCover)assert(p.shownDone==0&&p.shownActive==2);
+    assert(p.stick.taskTransfer.oldActive==2&&p.stick.taskTransfer.newDone==1&&p.stick.taskTransfer.newActive==1);
+    if(p.stick.taskTransfer.phase(p.now())<Transfer::kCover)assert(p.stick.shownDone==0&&p.stick.shownActive==2);
     else covered=true;
    }
   }
-  assert(started&&covered&&!p.transfer.busy(7400)&&p.shownDone==1&&p.shownActive==1);
+  assert(started&&covered&&!p.stick.taskTransfer.busy(p.now())&&p.stick.shownDone==1&&p.stick.shownActive==1);
  }
  // Header widget: both orders play the transfer; a lone half is shown late.
  for(int order=0;order<3;++order) {
@@ -330,7 +328,7 @@ static void pairedArrivalRoom() {
  // Single-counter layouts keep the authored 20px jerk exactly.
  {
   Preview p(0,2,21);float maxAway=0;
-  for(uint32_t ms=0;ms<=4000;ms+=33){p.step(ms);maxAway=fmaxf(maxAway,kAway*p.scene.away);}
+  for(uint32_t ms=0;ms<=4000;ms+=33){p.step(ms);maxAway=fmaxf(maxAway,kAway*p.stick.scene.away);}
   assert(maxAway<=20.001f&&maxAway>19);
  }
  // With both counters the wide face backs away from the corner while the
@@ -341,24 +339,24 @@ static void pairedArrivalRoom() {
   int clearFrames=0,checked=0;
   for(uint32_t ms=0;ms<=5200;ms+=cadence) {
    p.step(ms);
-   const float away=-kAway*p.scene.away;  // the original sign: negative is a dodge
+   const float away=-kAway*p.stick.scene.away;  // the original sign: negative is a dodge
    assert(isfinite(away)&&away<=0&&away>=-task_cues::Arrival::kMaxDodge-.001f);
    if(ms>static_cast<uint32_t>(cadence))assert(fabsf(away-previous)<14.0f*cadence/33+1);  // authored jerk only
    previous=away;minAway=fminf(minAway,away);
-   if(p.arrival.busy(ms)) {
+   if(p.stick.taskArrival.busy(p.now())) {
     // Outer edge of the eye on the dodge side, measured from that screen edge.
-    const float outer=p.scene.eyeX+p.scene.away+kAway*(p.scene.gap/2+p.scene.eyeWidth);
+    const float outer=p.stick.scene.eyeX+p.stick.scene.away+kAway*(p.stick.scene.gap/2+p.stick.scene.eyeWidth);
     minEye=fminf(minEye,kAway<0?outer:240-outer);
-    const uint32_t t=p.arrival.phase(ms);
+    const uint32_t t=p.stick.taskArrival.phase(p.now());
     if(t>=task_cues::Arrival::kHang+150&&t<task_cues::Arrival::kImpact) {
-     const auto& font=counter_labels::font(p.counterLabels.labels[1].index);
-     const float restX=p.counterX(1);
-     const auto& fromFont=&fontFor(p.arrival.from)==&fontFor(p.arrival.to)?font:fontFor(p.arrival.from);
-     const float restY=avatar_scene::mix(67.5f,116,p.scene.corners);
+     const auto& font=counter_labels::font(p.stick.counterLabels.labels[1].index);
+     const float restX=p.stick.counterX(1);
+     const auto& fromFont=&fontFor(p.stick.taskArrival.from)==&fontFor(p.stick.taskArrival.to)?font:fontFor(p.stick.taskArrival.from);
+     const float restY=avatar_scene::mix(67.5f,116,p.stick.scene.corners);
      // The falling piece itself (with its 2px outline) must not land on the face.
      float worst=0;bool drawn=false;
-     avatar_scene::Mask mask;avatar_scene::buildMask(p.scene,mask);
-     p.arrival.draw(ms,fromFont,font,restX,restY,[&](const count_raster::Font& f,const char* text,
+     avatar_scene::Mask mask;avatar_scene::buildMask(p.stick.scene,mask);
+     p.stick.taskArrival.draw(p.now(),fromFont,font,restX,restY,[&](const count_raster::Font& f,const char* text,
                                                     float x,float y,bool flying) {
       if(!flying)return;
       drawn=true;
@@ -368,11 +366,11 @@ static void pairedArrivalRoom() {
         if(px>=0&&px<240&&py>=0&&py<135)worst=fmaxf(worst,mask.coverage(px,py));
      },[](int,int,float){});
      ++checked;if(drawn&&worst<.02f)++clearFrames;
-     else fprintf(stderr,"mode %d cad %d t=%u worst %.3f corners %.2f\n",mode,cadence,t,worst,p.scene.corners);
+     else fprintf(stderr,"mode %d cad %d t=%u worst %.3f corners %.2f\n",mode,cadence,t,worst,p.stick.scene.corners);
     }
    }
   }
-  assert(minAway<-40&&minEye>=0&&p.scene.away==0);
+  assert(minAway<-40&&minEye>=0&&p.stick.scene.away==0);
   assert(checked>0&&clearFrames==checked);
  }
 }

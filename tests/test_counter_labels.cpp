@@ -5,8 +5,6 @@
 #define main native_preview_main
 #include "preview_avatar.cpp"
 #undef main
-#define STICK_AVATAR_WIDGET_NO_MAIN
-#include "../experiments/avatar-widget/main.cpp"
 
 static void rasterBounds(const counter_labels::State& plan,float exposed,float corners) {
  for(int side=0;side<2;++side) {

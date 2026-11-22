@@ -5,8 +5,6 @@
 #define main native_preview_main
 #include "preview_avatar.cpp"
 #undef main
-#define STICK_AVATAR_WIDGET_NO_MAIN
-#include "../experiments/avatar-widget/main.cpp"
 
 namespace {
 avatar_scene::Scene doneOnly(float clock) {

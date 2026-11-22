@@ -71,6 +71,7 @@ struct HeaderAvatar {
  // Herdr can split one completion over two polls; callers whose snapshots are
  // always atomic (the product site) turn this off so plain decrements show at once.
  bool pairSplitCompletions=true;
+ bool emit=true;  // Write each frame to stdout; fixtures settle silently first.
  bool initialized=false;
  uint32_t now=0;
  HeaderAvatar() { stick.palette=&colors; }
@@ -98,7 +99,7 @@ struct HeaderAvatar {
   const float seconds=stick.update(ms);
   stick.draw(canvas,ms,seconds);
   initialized=true;
-  canvas.output(background,colors.body);
+  if(emit)canvas.output(background,colors.body);
  }
  // Front button A: a short tap winks (and wakes); after dictation it nods.
  void button(bool voiceEnd) {

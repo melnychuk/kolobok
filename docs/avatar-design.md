@@ -100,9 +100,11 @@ scientific detector of thought, honesty, memory, or emotion.
   (`experiments/avatar-widget/main.cpp`, compiled into the site's and the Herdr
   widget's `avatar.wasm`) run this same code; only the drawing target differs.
   `tests/test_device_frames.py` guards the device's frames.
-- `tests/preview_avatar.cpp`: native RGB565 fixture renderer (scripted clips and
-  events) using the same kernels; `scripts/preview-avatar.py` generates GIFs and
-  timestamped storyboards from it.
+- `tests/preview_avatar.cpp`: the gallery's scripted fixtures (an authored clip
+  plus counts, a button, a startle or dictation over time), played through the
+  same desktop avatar, so each shows what the device would. Counter-check
+  fixtures use the deterministic timeline. `scripts/preview-avatar.py` generates
+  GIFs and timestamped storyboards from it.
 
 Eye transitions use short authored saccades and quintic easing, with genuine
 holds. Positional travel (eye x/y and body lean/lift) now finishes 25% earlier
