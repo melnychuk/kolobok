@@ -154,6 +154,39 @@ struct Mask {
   return fmaxf(base,stepCoverage(x,y));
  }
  float bottomAt(int x) const { return bottom[x]; }
+ // This mask grown by `width` pixels in every direction (a box dilation of
+ // the row spans, the lower rim and the step foot). Drawn under the face, the
+ // ring it adds is a stroke that keeps the face's own anti-aliased edge.
+ void dilate(const Mask& from,float width) {
+  for(int y=0;y<135;++y) {
+   float lo=1e9f,hi=-1e9f;
+   for(int r=y-1;r<=y+1;++r) {
+    if(r<0||r>=135||from.right[r]<=from.left[r])continue;
+    lo=fminf(lo,from.left[r]);hi=fmaxf(hi,from.right[r]);
+   }
+   if(hi>lo){left[y]=lo-width;right[y]=hi+width;}
+   else left[y]=right[y]=0;
+  }
+  for(int x=0;x<240;++x) {
+   float b=-1000;
+   for(int c=x-1;c<=x+1;++c)if(c>=0&&c<240&&from.bottom[c]>-1000)b=fmaxf(b,from.bottom[c]+width);
+   bottom[x]=b;
+  }
+  stepSide=from.stepSide;stepTop=135;stepBottom=-1;
+  if(!stepSide)return;
+  for(int y=0;y<135;++y) {
+   stepEdge[y]=stepRoot[y]=0;
+   bool any=false;
+   for(int r=y-1;r<=y+1;++r) {
+    if(r<from.stepTop||r>from.stepBottom||from.stepEdge[r]==from.stepRoot[r])continue;
+    const float edge=from.stepEdge[r]+stepSide*width;
+    if(!any){stepEdge[y]=edge;stepRoot[y]=from.stepRoot[r];any=true;continue;}
+    stepEdge[y]=stepSide<0?fminf(stepEdge[y],edge):fmaxf(stepEdge[y],edge);
+    stepRoot[y]=stepSide<0?fmaxf(stepRoot[y],from.stepRoot[r]):fminf(stepRoot[y],from.stepRoot[r]);
+   }
+   if(any){if(y<stepTop)stepTop=y;stepBottom=y;}
+  }
+ }
  void rowBounds(int y,float& lo,float& hi) const {
   lo=left[y];hi=right[y];
   if(stepSide<0&&y>=stepTop&&y<=stepBottom&&stepEdge[y]<stepRoot[y])lo=fminf(lo,stepEdge[y]);

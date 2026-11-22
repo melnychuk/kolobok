@@ -195,8 +195,8 @@ export function packFrame(rgb, width, background, quantize = 1, rows = null) {
 // dither can make thousands of tiny shapes. Stay within Herdr's per-render JS
 // budget with a smaller sampling grid and a reduced edge/dither palette.
 const EXACT_COLORS = new Set([0, 0x3981f6, 0xeef6ff, 0x20c65a, 0xf6758b, 0xffcb00,
-  // Light mode: eyes and ink, working, done, needs-you, request.
-  0x39404a, 0x94c6ff, 0x83eeac, 0xffa5ac, 0xfff28b]);
+  // Light mode: eyes and ink, working, done, needs-you, request, face stroke.
+  0x39404a, 0x94c6ff, 0x83eeac, 0xffa5ac, 0xfff28b, 0xbdbecd]);
 
 /** @param {number} rgb @returns {`#${string}`} */
 const css = (rgb) => `#${rgb.toString(16).padStart(6, "0")}`;

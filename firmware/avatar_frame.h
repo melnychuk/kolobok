@@ -38,6 +38,7 @@ namespace avatar_frame {
 constexpr int kScreenWidth = 240;
 constexpr int kScreenHeight = 135;
 constexpr int kCountSideWidth = 48;  // Minimum exposed background beside the face.
+constexpr float kStrokeWidth = 1;  // Light-mode outline around the face, in pixels.
 constexpr int kCountPadding = 16;
 constexpr uint16_t kBlack = 0x0000;
 constexpr uint32_t kSleepAfterMs = 4000;
@@ -134,6 +135,7 @@ struct Avatar {
   counter_space::State counterSpace;
   counter_labels::State counterLabels;
   avatar_scene::Mask faceMask;
+  avatar_scene::Mask strokeMask;  // faceMask grown by kStrokeWidth (light mode only).
   face_physics::Surface surface;
   face_physics::Reaction countReaction;
   eye_acting::Player actor;
@@ -596,6 +598,17 @@ struct Avatar {
     // Skip whole opaque blocks while preserving individual travelling flaps
     // and exact fractional edge coverage. Counts still render above the face.
     const uint16_t body=palette->body;
+    // Light mode: a thin stroke, so the off-white face stands apart from an
+    // equally pale screen. Dark mode never builds it (frames unchanged).
+    if(lightMode) {
+      strokeMask.dilate(faceMask,kStrokeWidth);
+      const uint16_t outline=palette->outline;
+      strokeMask.raster([&](int x,int y,int length) {
+        target.run(x,y,length,outline);
+      },[&](int x,int y,float alpha) {
+        target.ink(x,y,outline,alpha);
+      });
+    }
     faceMask.raster([&](int x,int y,int length) {
       target.run(x,y,length,body);
     },[&](int x,int y,float alpha) {
