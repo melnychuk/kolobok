@@ -88,18 +88,21 @@ body::after {
 .bp-tag { font: 600 11px var(--mono); color: #0b1f3a; background: var(--yellow); padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
 .bp-callout { background: var(--sky); }
 /* Asleep while the renderer loads: the firmware's sleeping slits, sized by
-   js/intro.js to match the 3D frame they hand over to, breathing slowly. */
+   js/intro.js to match the 3D frame they hand over to, breathing slowly.
+   Hidden until intro.js has placed them (.slits): the CSS defaults can't know
+   the camera distance or the hero's lift, so they would show, then jump. */
 .loading {
   position: absolute; inset: 0; display: grid; place-content: center; grid-auto-flow: column;
-  gap: var(--slit-gap, .84vh); transform: translate(var(--slit-x, 0px), var(--slit-y, .58vh));
-  transition: opacity .15s linear; pointer-events: none;
+  gap: var(--slit-gap); transform: translate(var(--slit-x, 0px), var(--slit-y));
+  opacity: 0; pointer-events: none;
 }
+.stage.slits .loading { opacity: 1; }
 .loading span {
-  width: var(--slit-w, 2.29vh); height: var(--slit-h, 2px); border-radius: 99px; background: var(--eye);
+  width: var(--slit-w); height: var(--slit-h); border-radius: 99px; background: var(--eye);
   animation: doze 3.2s ease-in-out infinite;
 }
 @keyframes doze { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-.stage.ready .loading { opacity: 0; }
+.stage.ready .loading { opacity: 0; transition: opacity .15s linear; }
 .stage-error { position: absolute; inset: auto 20px 80px; text-align: center; color: var(--coral); margin: 0; }
 
 .now {

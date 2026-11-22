@@ -42,6 +42,7 @@ export function fitSleepyEyes(stage = document.getElementById("stage"), slits = 
   set("--slit-gap", slits.gap * PX);
   stage.style.setProperty("--slit-x", `${(slits.x * PX * scale).toFixed(2)}px`);
   stage.style.setProperty("--slit-y", `${(slits.y * PX * scale - introLift() * h).toFixed(2)}px`);
+  stage.classList.add("slits"); // placed: show them (styles.css)
 }
 
 // The two sleeping slits in an RGBA frame (240×135, light eyes on a dark
