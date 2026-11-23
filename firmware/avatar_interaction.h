@@ -96,17 +96,18 @@ struct Startle {
 // previews and contact regressions; it is not used live.
 struct Checks {
  static constexpr uint32_t kCycle=8400,kActiveLength=2100,kDoneLength=2600,kBodyLag=90;
- static constexpr uint32_t kFirstDelay=1400,kGapMin=5200,kGapMax=12800,kExciteAt=740;
+ static constexpr uint32_t kFirstDelay=1400,kGapMin=5200,kGapMax=12800;
  uint32_t started=0,previousPhase=0,actionCycle=0;
  bool enabled=false,donePresent=true,activePresent=true;
  bool fixed=false;
  // Scheduled-mode state.
  uint32_t checkStart=0,nextAt=0,seed=0x6d2b79f5u,count=0;
  int side=0,lastSide=0;
- bool press=true,kissing=false,excited=false;
+ bool press=true,kissing=false;
  float jitterX=0,jitterY=0;
  struct Moment { int side=0;uint32_t local=0;bool press=true,kiss=false;float jx=0,jy=0; };
  static uint32_t length(int which) { return which==status_sides::kDone?kDoneLength:kActiveLength; }
+ bool pairedDone(int which) const { return which==status_sides::kDone&&donePresent&&activePresent; }
  float unit() {
   if(!seed)seed=1;
   seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;
@@ -116,27 +117,22 @@ struct Checks {
  bool busy(uint32_t now) const {
   return enabled&&!fixed&&side!=0&&now-checkStart<length(side)+kBodyLag;
  }
- static void excite(face_physics::Surface* surface,int which) {
-  if(!surface||!which)return;
-  // The authored press excites the nearby free rim; numerals still react
-  // only if that travelling contour actually reaches their resting bounds.
-  using face_physics::Surface;
-  const float center=Surface::node(which<0?4/31.0f:27/31.0f);  // rim near that screen side
-  for(int i=0;i<Surface::count;++i) {
-   const float distance=(i-center)/Surface::node(2.8f/31);
-   surface->velocity[i]+=40*expf(-.5f*distance*distance);
-  }
- }
  void begin(uint32_t now,int which) {
-  side=which;checkStart=now;excited=false;
+  side=which;checkStart=now;
   press=count==0||unit()>=.34f;
+  // With both counters on screen only active work gets poked; a check of
+  // the completed counter is a warm glance.
+  if(pairedDone(which))press=false;
   kissing=which==status_sides::kDone&&press&&actionCycle%3==1;
   jitterX=(unit()*2-1)*3;jitterY=(unit()*2-1)*2.5f;
   ++count;
  }
  // `ready`: the acting player rests between clips (always true in fixtures).
+ // `surface` is unused: a press used to kick the nearby rim, which read as a
+ // bump; the round cap (shape()) is now the whole gesture.
  void update(uint32_t now,bool allowed,face_physics::Surface* surface=nullptr,
              bool done=true,bool active=true,bool ready=true) {
+  (void)surface;
   allowed=allowed&&(done||active);
   if(allowed&&(!enabled||done!=donePresent||active!=activePresent)) {
    started=now;previousPhase=0;side=0;nextAt=now+kFirstDelay;
@@ -147,15 +143,11 @@ struct Checks {
   if(fixed) {
    const uint32_t phase=(now-started)%kCycle;
    if(phase<previousPhase)++actionCycle;
-   const int which=activePresent&&phase>=1400+kExciteAt&&previousPhase<1400+kExciteAt?status_sides::kActive:
-                   donePresent&&phase>=4400+kExciteAt&&previousPhase<4400+kExciteAt?status_sides::kDone:0;
-   excite(surface,which);
    previousPhase=phase;
    return;
   }
   if(side!=0) {
    const uint32_t local=now-checkStart;
-   if(!excited&&local>=kExciteAt) { excited=true;if(press)excite(surface,side); }
    if(local<length(side)+kBodyLag)return;
    if(side==status_sides::kDone&&press)++actionCycle;
    lastSide=side;side=0;
@@ -177,6 +169,7 @@ struct Checks {
    const uint32_t begin=done?4400:1400,end=done?7000:3500;
    if(t<begin||t>=end)return m;
    m.side=done?status_sides::kDone:status_sides::kActive;m.local=t-begin;m.kiss=done&&actionCycle%3==1;
+   if(pairedDone(m.side))m.press=m.kiss=false;
    return m;
   }
   if(side==0)return m;
@@ -184,6 +177,7 @@ struct Checks {
   const uint32_t local=body?(elapsed>kBodyLag?elapsed-kBodyLag:0):elapsed;
   if(local>=length(side))return m;
   m.side=side;m.local=local;m.press=press;m.kiss=kissing;m.jx=jitterX;m.jy=jitterY;
+  if(pairedDone(m.side))m.press=m.kiss=false;
   return m;
  }
  eye_acting::Pose apply(const eye_acting::Pose& base,uint32_t now,bool body=false) const {
@@ -206,20 +200,32 @@ struct Checks {
    look.lean=6*toward;look.lift=0;look.bodyWidth=1.02f;
   }
   look.x+=m.jx;look.y+=m.jy;
-  // A deliberate little press and recoil, not continuous bobbing.
-  if(m.press) {
-   const float bump=eye_acting::smooth(local/650.0f)*
-                    (1-eye_acting::smooth(local>950?(local-950)/450.0f:0));
-   look.lean+=3*toward*bump;look.bodyHeight+=.035f*bump;
+  // A poke is the round cap's job (shape()). The body does not lunge with
+  // it (a whole-body lean and press read as a bump): it braces back a little,
+  // away from the numeral (up, when the numerals are below), so the round
+  // cap visibly reaches across the gap.
+  if(m.press&&!m.kiss) {
+   const float brace=pokeReach(local);
+   const bool paired=donePresent&&activePresent;
+   look.lean=look.lean*kPokeLean-(paired?0:kPokeBrace)*toward*brace;
+   if(paired) {
+    look.lift=avatar_scene::mix(look.lift,-kPokeLift,brace);
+    // A wider body would lower the rim's corners again, onto the numeral.
+    look.bodyWidth=avatar_scene::mix(look.bodyWidth,1,brace);
+   }
   }
-  // Every third completed press is an affectionate kiss. Keep smiling curved
-  // closures; mouth/contour follow separately, without modifying task state.
+  // Every third completed press is an affectionate kiss, not a poke: a cheek
+  // nuzzle. Happy curved closures held while the body leans in, the facing
+  // side swells softly against the numeral (shape()) and rubs it slowly up
+  // and down, then eases back. No task state changes.
   if(m.kiss) {
-   const float kiss=eye_acting::smooth(local/650.0f)*
-                    (1-eye_acting::smooth(local>950?(local-950)/450.0f:0));
-   look.closeL=look.closeR=.85f*kiss;
+   const float nuzzle=nuzzleWeight(local);
+   look.closeL=look.closeR=.9f*nuzzle;
+   look.smile=fmaxf(look.smile,.72f);
+   look.lean=avatar_scene::mix(look.lean,kNuzzleLean*toward,nuzzle);
+   look.lift+=kNuzzleRub*nuzzleRub(local);
   }
-  if(done&&local>=1550&&local<1770) {
+  if(done&&!m.kiss&&local>=1550&&local<1770) {
    const float closure=local<1630?eye_acting::smooth((local-1550)/80.0f):
                         1-eye_acting::smooth((local-1630)/140.0f);
    look.closeL=look.closeR=closure;
@@ -227,6 +233,37 @@ struct Checks {
   auto result=eye_acting::mix(base,look,weight);
   if(body)result.closeL=result.closeR=0;
   return result;
+ }
+ // Poke timeline (body time, ms): the blob rises out toward the numeral by
+ // kPokeGrow, jabs it twice, and flows back into the body from kPokeRetract
+ // over kPokeRetractLength.
+ static constexpr uint32_t kPokeGrow=380,kPokeRetract=1100,kPokeRetractLength=420;
+ static constexpr float kPokeJab=7,kPokeLean=0,kPokeBrace=7,kPokeLift=10;
+ // Kiss timeline: lean in and close the eyes (150..650ms), nuzzle with a
+ // slow cheek rub (two strokes, 650..1350ms), ease back by 1800ms.
+ static constexpr uint32_t kNuzzleIn=150,kNuzzleTouch=650,kNuzzleHold=1350,kNuzzleOut=1800;
+ static constexpr float kNuzzleLean=5,kNuzzleRub=2.2f;
+ static float pulse(uint32_t t,uint32_t start,uint32_t peak,uint32_t hold,uint32_t end) {
+  if(t<=start||t>=end)return 0;
+  if(t<peak)return eye_acting::smooth((t-start)/static_cast<float>(peak-start));
+  if(t<hold)return 1;
+  return 1-eye_acting::smooth((t-hold)/static_cast<float>(end-hold));
+ }
+ static float pokeReach(uint32_t local) {
+  return eye_acting::smooth(local/static_cast<float>(kPokeGrow))*
+         (1-eye_acting::smooth(local>kPokeRetract?(local-kPokeRetract)/static_cast<float>(kPokeRetractLength):0));
+ }
+ static float pokeJab(uint32_t local) {
+  return kPokeJab*(pulse(local,430,520,560,700)+pulse(local,740,830,870,1020));
+ }
+ static float nuzzleWeight(uint32_t local) {
+  return pulse(local,kNuzzleIn,kNuzzleTouch,kNuzzleHold,kNuzzleOut);
+ }
+ // Two slow up-and-down strokes while touching, starting and ending at rest.
+ static float nuzzleRub(uint32_t local) {
+  if(local<=kNuzzleTouch||local>=kNuzzleHold)return 0;
+  const float u=(local-kNuzzleTouch)/static_cast<float>(kNuzzleHold-kNuzzleTouch);
+  return sinf(u*4*3.14159265f)*sinf(u*3.14159265f);
  }
  // Supply a localized shape performance after the scene's eased layout has
  // been composed. Coordinates are the same RESTING bounds used for contact.
@@ -239,14 +276,13 @@ struct Checks {
   const bool done=m.side==status_sides::kDone;
   if(done?(!donePresent||!doneReadable):(!activePresent||!activeReadable))return;
   const uint32_t local=m.local;
-  const float press=eye_acting::smooth(local/650.0f)*
-                    (1-eye_acting::smooth(local>950?(local-950)/450.0f:0));
-  const float recoil=local>1400?eye_acting::smooth((local-1400)/120.0f)*
-                                (1-eye_acting::smooth(local>1520?(local-1520)/250.0f:0)):0;
-  scene.poke.side=static_cast<float>(m.side);scene.poke.strength=press-.14f*recoil;
+  const float reach=m.kiss?nuzzleWeight(local):pokeReach(local);
+  if(reach<=0)return;
+  scene.poke.side=static_cast<float>(m.side);
+  if(m.kiss)scene.poke.kiss=reach;
+  else { scene.poke.strength=reach;scene.poke.jab=pokeJab(local); }
   scene.poke.cx=done?doneX:activeX;scene.poke.cy=cy;
   scene.poke.width=done?doneWidth:activeWidth;scene.poke.height=done?doneHeight:activeHeight;
-  scene.poke.kiss=m.kiss?press:0;
  }
 };
 

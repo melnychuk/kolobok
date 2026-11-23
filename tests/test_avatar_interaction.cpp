@@ -91,6 +91,8 @@ int main() {
     } else firstPress=live.press;
     previousStart=t;++starts;
     if(live.press)++presses;else ++glances;
+    // With both counters present, completed counters are only glanced at.
+    if(live.side==kDone)assert(!live.press&&!live.kissing);
     if(live.side==kActive)++activeSides;else ++doneSides;
     if(live.kissing)++kisses;
     (void)previousSide;previousSide=live.side;
@@ -103,19 +105,23 @@ int main() {
    }
   }
   assert(starts>=35&&starts<=110&&firstPress);
-  assert(glances>=5&&presses>=glances&&activeSides>=8&&doneSides>=8);
-  assert(kisses>=1&&kisses*2<doneSides);
+  assert(glances>=5&&presses*2>=activeSides&&activeSides>=8&&doneSides>=8);
+  assert(kisses==0);
   assert(sawShortGap&&sawLongGap);
   // Single counters only check the side that exists.
+  // A lone completed counter is pressed, and every third press is a kiss.
   Checks single;eye_acting::Player solo;
-  for(uint32_t t=0;t<120000;t+=33) {
+  int soloPresses=0,soloKisses=0;
+  for(uint32_t t=0;t<240000;t+=33) {
    solo.update(eye_acting::State::done,t,t*7919u,single.busy(t));
+   const int was=single.side;
    single.update(t,true,nullptr,true,false,solo.resting(t));
    assert(single.side==0||single.side==kDone);
+   if(single.side&&!was) { soloPresses+=single.press;soloKisses+=single.kissing; }
   }
-  assert(single.count>=4);
+  assert(single.count>=4&&soloPresses>=3&&soloKisses>=1&&soloKisses*2<soloPresses+1);
   // Disabling or a presence change cancels the running check at once.
-  single.update(120033,false);assert(!single.busy(120033)&&single.side==0);
+  single.update(240033,false);assert(!single.busy(240033)&&single.side==0);
  }
  CounterSpring spring;
  spring.update(.033f,5,true,-1);assert(spring.x==0&&spring.y==0);
@@ -169,7 +175,9 @@ int main() {
   active.update(.033f,contactDepth(mask,activeX,116,30,23),true,kActive);
   maxDone=fmaxf(maxDone,fabsf(done.y));maxActive=fmaxf(maxActive,fabsf(active.y));
  }
- assert(maxDone>.2f&&maxActive>.2f);
+ // Both counters present: active is poked; completed only gets a glance.
+ assert(maxActive>.2f);
+ (void)maxDone;
  // Single-counter layouts reach the real side edge, including narrow I.
  for(int side=-1;side<=1;side+=2)for(const char* text:{"I","III","LXXXVIII"}) {
   const auto& font=strcmp(text,"LXXXVIII")==0?kCompactBadgeFont:kBadgeFont;

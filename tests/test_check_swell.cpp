@@ -5,30 +5,14 @@
 #include <initializer_list>
 #include "../firmware/avatar_interaction.h"
 
-// A counter check swells the body toward its numeral as a smooth bell carried
-// by the side membrane (or the lower rim when paired). It replaced a capsule
-// "hand" unioned with the body and wrapped in a convex envelope, whose
-// straight tangent lines met at the numeral and read as an angular "<".
-
-// Largest change of edge direction, in degrees, between the `span` rows above
-// and below any row of a row-based edge. The base oval stays under ~8 degrees.
-static float turn(const float* edge,int span) {
- float worst=0;
- for(int y=span;y<135-span;++y) {
-  const float above=atan2f(edge[y]-edge[y-span],static_cast<float>(span));
-  const float below=atan2f(edge[y+span]-edge[y],static_cast<float>(span));
-  worst=fmaxf(worst,fabsf(below-above)*57.29578f);
- }
- return worst;
-}
-static float sideTurn(const avatar_scene::Mask& mask,int side) {
- float edge[135];
- for(int y=0;y<135;++y)edge[y]=side<0?mask.left[y]:mask.right[y];
- return turn(edge,6);
-}
+// A counter check grows a round cap toward its numeral with a small root
+// swell carried by the side membrane (or the lower rim when paired); a kiss
+// is a broad cheek swell instead. It replaced a broad bell swell that, with a
+// body lean and rim kick, read as the whole body bumping the numeral; before
+// that a capsule "hand" in a convex envelope read as an angular "<".
 int main() {
  unsigned frames=0,checkFrames=0;
- float worstChecked=0,worstPlain=0,peakResidual=0;
+ float peakReach=0,peakResidual=0;
  for(int side: {-1,1})for(int kiss: {0,1})for(int strip: {48,72})
  for(uint32_t cadence: {17u,33u,50u}) {
   // `side` is the counter's screen side; its status follows status_sides.
@@ -48,7 +32,7 @@ int main() {
     scene.flowClock=ms*.0006f;
     checks.shape(scene,ms,status_sides::fromEdge(status_sides::kDone,strip/2.0f),
                  status_sides::fromEdge(status_sides::kActive,strip/2.0f),67.5f,14,14,23,23);
-    // As in the frame: the membrane carries the swell, lagging behind it.
+    // As in the frame: the membrane carries the root swell, lagging behind it.
     face_physics::Shape carried;avatar_scene::membraneShape(scene,carried);
     surface.follow(carried);
     avatar_scene::Mask mask,plain;avatar_scene::buildMask(scene,mask);
@@ -56,23 +40,32 @@ int main() {
     const auto swells=avatar_scene::pokeSwells(scene);
     if(swells.side==0)assert(memcmp(&mask,&plain,sizeof(mask))==0);
     else {
-     // Only the facing side moves, and only outward.
+     // Only the facing side moves, only outward, and only near the numeral.
      assert(swells.side==side&&swells.rim.amount==0);
      for(int y=0;y<135;++y) {
       if(side<0)assert(mask.left[y]<=plain.left[y]&&mask.right[y]==plain.right[y]);
       else assert(mask.right[y]>=plain.right[y]&&mask.left[y]==plain.left[y]);
+      if(fabsf(y+.5f-67.5f)>=swells.edge.width)
+       assert(mask.left[y]==plain.left[y]&&mask.right[y]==plain.right[y]);
      }
      assert(memcmp(mask.bottom,plain.bottom,sizeof(mask.bottom))==0);
-     const float checked=sideTurn(mask,side),natural=sideTurn(plain,side);
-     worstChecked=fmaxf(worstChecked,checked);worstPlain=fmaxf(worstPlain,natural);
-     // No corner: at most a little more bend than the oval's own.
-     if(checked>natural+3.5f)
-      fprintf(stderr,"Angular check side=%d kiss=%d strip=%d cadence=%u clip=%d ms=%u: %.2f vs %.2f\n",
-              side,kiss,strip,cadence,clip,ms,checked,natural);
-     assert(checked<=natural+3.5f);
+     // A blob, not a bump: the extrusion at the numeral's row dwarfs the
+     // root swell, and it narrows toward its tip.
+     const float reach=side<0?plain.left[67]-mask.left[67]:mask.right[67]-plain.right[67];
+     peakReach=fmaxf(peakReach,reach);
+     // (A kiss is a broad cheek nuzzle instead, with no blob.)
+     if(scene.poke.kiss==0&&reach>avatar_scene::kPokeMinLength) {
+      assert(swells.edge.amount<.2f*reach);
+      int over=0;
+      for(int y=0;y<135;++y) {
+       const float r=side<0?plain.left[y]-mask.left[y]:mask.right[y]-plain.right[y];
+       if(r>.75f*reach)++over;
+      }
+      assert(over<=2*fmaxf(avatar_scene::kPokeRadiusMax,reach));
+     }
      ++checkFrames;
     }
-    // The skin carries the swell with follow-through, then settles.
+    // The skin carries the root swell with follow-through, then settles.
     const int s=side<0?0:1;
     float residual=0;
     for(int i=0;i<face_physics::kEdgeNodes;++i)residual=fmaxf(residual,fabsf(surface.edge[s][i]));
@@ -85,12 +78,12 @@ int main() {
    assert(settledResidual<.25f);
   }
  }
- assert(checkFrames>3000&&peakResidual>1);
- printf("Check swell: %u frames / %u check frames; worst 12-row turn %.2f deg (oval alone %.2f), "
-        "membrane follow-through up to %.2f px\n",frames,checkFrames,worstChecked,worstPlain,peakResidual);
+ assert(checkFrames>3000&&peakResidual>.25f&&peakReach>avatar_scene::kPokeMinLength);
+ printf("Check pokes: %u frames / %u check frames; reach up to %.2f px, "
+        "membrane follow-through up to %.2f px\n",frames,checkFrames,peakReach,peakResidual);
 
- // Reflow blends the side swell into the rim swell continuously, and paired,
- // request and sleeping layouts carry no side swell at all.
+ // Reflow blends the sideways cap into the downward one continuously,
+ // and paired, request and sleeping layouts carry no side swell at all.
  avatar_scene::Mask previous;bool first=true;
  for(float corners=0;corners<=1.0001f;corners+=.01f) {
   avatar_scene::Scene scene;scene.corners=fminf(1,corners);scene.offset=24*(1-scene.corners);

@@ -48,8 +48,12 @@ using ActingPose=eye_acting::Pose;
 using Surface=face_physics::Surface;
 constexpr ActingPose neutralPose=eye_acting::p();
 // An authored local reach, anchored to a resting numeral (never its own hop).
+// `strength` grows the poke's round blob out of the body (0 hidden, 1 resting
+// just short of the numeral); `jab` pushes it further, in pixels. `kiss` is a
+// cheek nuzzle instead (0..1): the facing side swells softly against the
+// numeral, no blob.
 struct Poke {
- float side=0,strength=0,cx=0,cy=0,width=0,height=0,kiss=0;
+ float side=0,strength=0,cx=0,cy=0,width=0,height=0,kiss=0,jab=0;
 };
 // Completion-sorting blobs: the lower rim droops into a soft lobe over each
 // numeral (0 done, 1 active), its tip at y, centred at x, halfWidth wide.
@@ -303,40 +307,84 @@ inline float rigidBottom(const Geometry& g,float widen,float stretch,float at) {
  if(nx>=1)return -1000;
  return g.cy+g.ry*profile(nx,g.power);
 }
-// A counter check swells the body toward its numeral: the facing side in a
-// vertical layout, the lower rim in the paired layout, blended through reflow.
-// The reach is measured from the rigid outline, so the membrane's own motion
-// never feeds back into it, and a fixed width per check lets the bell grow in
-// place instead of sliding. Zero strength is exactly no swell.
-// The bell widens with the reach: a narrow bell added at the oval's widest
-// point concentrates the bend at the numeral and leaves straight flanks.
-constexpr float kSwellBase=40,kSwellGrowth=5;
-// The paired rim meets the numeral on its rising flank, not at its extreme,
-// so a narrower bell already reads as a soft swelling there.
-constexpr float kRimSwellBase=30,kRimSwellGrowth=3;
+// A counter check is a poke: a round blob rises out of the body toward its
+// numeral (out of the facing side in a vertical layout, down out of the lower
+// rim in the paired layout, blended through reflow): a circular cap about as
+// wide as it is long, fused to the body by a tangent fillet. It rests kPokeGap short of
+// the numeral so its roundness shows; jabs (Poke::jab) bring it into contact.
+// The body itself stays put; only a small root swell, carried by the
+// membrane, gives the reach weight and follow-through. Zero strength is
+// exactly no poke. Length is clamped so the blob always shows and never
+// crosses the screen.
+constexpr float kPokeGap=2,kPokeMinLength=12,kPokeMaxLength=34;
+// Dome half-width: its resting length (so it is round), within these bounds;
+// a downward poke also widens toward a wide numeral's half-width.
+constexpr float kPokeRadiusMin=13,kPokeRadiusMax=18,kPokeFillet=8;
+// Root swell: a bell of kPokeSag of the length, as wide as 2*radius+length.
+constexpr float kPokeSag=.12f;
+// Kiss: a soft cheek, not a blob. A broad bell that reaches kCheekOverlap
+// into the numeral, at most kCheekMax out.
+constexpr float kCheekWidth=64,kCheekOverlap=1,kCheekMax=20;
+inline float pokeStrength(const Scene& scene) {
+ return fmaxf(0,scene.poke.strength)*(1-scene.alert)*(1-scene.sleep);
+}
+inline float kissStrength(const Scene& scene) {
+ return fmaxf(0,scene.poke.kiss)*(1-scene.alert)*(1-scene.sleep);
+}
+// Blob length from an edge at `edge` (x for sides, y for the rim): to
+// kPokeGap short of the numeral's near edge, plus the jab if `jab`.
+inline float pokeLength(const Poke& p,float edge,bool rim,int side,bool jab=true) {
+ const float push=jab?p.jab:0;
+ const float tip=rim?p.cy-p.height/2-kPokeGap+push:
+                     p.cx-side*(p.width/2+kPokeGap-push);
+ return face_physics::clamp(rim?tip-edge:side*(tip-edge),kPokeMinLength,kPokeMaxLength);
+}
+inline float pokeRadius(const Poke& p,float rest,bool rim) {
+ const float radius=face_physics::clamp(rest,kPokeRadiusMin,kPokeRadiusMax);
+ return rim?fmaxf(radius,fminf(p.width/2,kPokeRadiusMax)):radius;
+}
 inline Swells pokeSwells(const Scene& scene,const Geometry& g,float soft,float widen,float stretch) {
  Swells out;
  const auto& p=scene.poke;
- const float strength=fmaxf(0,p.strength)*(1-scene.alert)*(1-scene.sleep);
- if(strength==0||p.side==0)return out;
+ const float strength=pokeStrength(scene),kiss=kissStrength(scene);
+ if((strength==0&&kiss==0)||p.side==0)return out;
  out.side=p.side<0?-1:1;
- const float narrow=mix(1,.9f,p.kiss);  // an affectionate check is a little more pointed
+ // Measured from the rigid outline, so the membrane never feeds back into it.
+ if(kiss>0) {
+  const float lateral=kiss*(1-scene.corners),vertical=kiss*scene.corners;
+  if(lateral>0) {
+   const float half=rigidHalf(scene,g,soft,p.cy);
+   if(half>0) {
+    const float target=p.cx-out.side*(p.width/2-kCheekOverlap);
+    const float reach=face_physics::clamp(out.side*(target-(g.cx+out.side*half)),0,kCheekMax);
+    out.edge.amount=reach*lateral;out.edge.center=p.cy;out.edge.width=kCheekWidth;
+   }
+  }
+  if(vertical>0) {
+   const float rim=rigidBottom(g,widen,stretch,p.cx);
+   if(rim>-1000) {
+    const float reach=face_physics::clamp(p.cy-p.height/2+kCheekOverlap-rim,0,kCheekMax);
+    out.rim.amount=reach*vertical;out.rim.center=p.cx;out.rim.width=kCheekWidth;
+   }
+  }
+  return out;
+ }
  const float lateral=strength*(1-scene.corners),vertical=strength*scene.corners;
  if(lateral>0) {
   const float half=rigidHalf(scene,g,soft,p.cy);
   if(half>0) {
    const float edge=g.cx+out.side*half;
-   const float reach=face_physics::clamp(out.side*(p.cx-out.side*p.width/2-edge)+4,4,18);
-   out.edge.amount=reach*lateral;out.edge.center=p.cy;
-   out.edge.width=(kSwellBase+kSwellGrowth*reach)*narrow;
+   const float length=pokeLength(p,edge,false,out.side);
+   out.edge.amount=kPokeSag*length*lateral;out.edge.center=p.cy;
+   out.edge.width=2*pokeRadius(p,pokeLength(p,edge,false,out.side,false),false)+length;
   }
  }
  if(vertical>0) {
   const float rim=rigidBottom(g,widen,stretch,p.cx);
   if(rim>-1000) {
-   const float lower=face_physics::clamp(p.cy-p.height/2-rim+4,4,14);
-   out.rim.amount=lower*vertical;out.rim.center=p.cx;
-   out.rim.width=(kRimSwellBase+kRimSwellGrowth*lower)*narrow;
+   const float length=pokeLength(p,rim,true,out.side);
+   out.rim.amount=kPokeSag*length*vertical;out.rim.center=p.cx;
+   out.rim.width=2*pokeRadius(p,pokeLength(p,rim,true,out.side,false),true)+length;
   }
  }
  return out;
@@ -487,6 +535,67 @@ inline void lobeMask(const Scene& scene,Mask& mask) {
   }
  }
 }
+// Depth of a round cap on an edge at distance d from its axis: a circle of
+// `radius` whose top is `height` out (radius >= height, so at most a half
+// circle and never an undercut), fused to the edge by a concave fillet
+// circle of radius `fillet` tangent to both (a smooth, C1 rounded union).
+inline float domeDepth(float d,float height,float radius,float fillet) {
+ const float centre=height-radius;  // <= 0: inside the body
+ if(fillet<=0)return d<radius?fmaxf(0,centre+sqrtf(radius*radius-d*d)):0;
+ const float reach=radius+fillet,lift=fillet-centre;
+ if(lift>=reach)return 0;
+ const float end=sqrtf(reach*reach-lift*lift);  // fillet centre's distance
+ if(d>=end)return 0;
+ const float joint=end*radius/reach;              // where cap and fillet touch
+ if(d<=joint)return centre+sqrtf(radius*radius-d*d);
+ const float u=end-d;
+ return fillet-sqrtf(fmaxf(0,fillet*fillet-u*u));
+}
+// Grow the cap on an edge profile (rows of a side or columns of the rim).
+// As `rise` goes 0->1 the cap emerges (its top from 0 to `height`) and the
+// fillet grows with it, so a tiny rise is a tiny change and zero is exact.
+template<class Valid>
+inline void growDome(float* edge,int count,float center,float height,float radius,float rise,
+                     float sign,Valid valid) {
+ const float top=height*rise,round=fmaxf(radius,top),fillet=kPokeFillet*rise;
+ const float extent=round+fillet+1;
+ const int first=static_cast<int>(fmaxf(0,floorf(center-extent)));
+ const int last=static_cast<int>(fminf(static_cast<float>(count-1),ceilf(center+extent)));
+ for(int i=first;i<=last;++i) {
+  if(!valid(i))continue;
+  edge[i]+=sign*domeDepth(fabsf(i+.5f-center),top,round,fillet);
+ }
+}
+// The poke's blob, measured from the live (membrane-carried) edge at its
+// axis so it lands by the numeral however the body sways. Lateral and
+// downward pokes share the shape; reflow blends their rise.
+inline void pokeMask(const Scene& scene,Mask& mask) {
+ const auto& p=scene.poke;
+ const float strength=pokeStrength(scene);
+ if(strength==0||p.side==0)return;
+ const int side=p.side<0?-1:1;
+ const float lateral=strength*(1-scene.corners),vertical=strength*scene.corners;
+ if(lateral>0) {
+  const int row=static_cast<int>(face_physics::clamp(p.cy,0,134));
+  if(mask.right[row]>mask.left[row]) {
+   float* edge=side<0?mask.left:mask.right;
+   const float radius=pokeRadius(p,pokeLength(p,edge[row],false,side,false),false);
+   const auto valid=[&](int y){return mask.right[y]>mask.left[y];};
+   growDome(edge,135,p.cy,pokeLength(p,edge[row],false,side),radius,lateral,
+            static_cast<float>(side),valid);
+   for(int y=0;y<135;++y)edge[y]=fmaxf(0,fminf(240,edge[y]));
+  }
+ }
+ if(vertical>0) {
+  const int column=static_cast<int>(face_physics::clamp(p.cx,0,239));
+  if(mask.bottom[column]>=0) {
+   const float rim=mask.bottom[column];
+   const float radius=pokeRadius(p,pokeLength(p,rim,true,side,false),true);
+   growDome(mask.bottom,240,p.cx,pokeLength(p,rim,true,side),radius,vertical,1,
+            [&](int x){return mask.bottom[x]>=0;});
+  }
+ }
+}
 // The authored deformations the membranes carry (face_physics::Surface::
 // follow): the check swells and the sorting sags, sampled at the nodes.
 inline void membraneShape(const Scene& scene,face_physics::Shape& shape) {
@@ -525,6 +634,7 @@ inline void buildMask(const Scene& scene,Mask& mask) {
                  swells.rim.at(x+.5f)+sags[0].at(x+.5f)+sags[1].at(x+.5f);
  }
  lobeMask(scene,mask);
+ pokeMask(scene,mask);
  stepMask(scene,mask);
 }
 // Visual-only height trim: leave body/mouth anchors and authored clocks intact.
@@ -633,7 +743,7 @@ void mouth(const Scene& scene,const Mask& mask,Pixel pixel) {
                      scene.eyeY+fmaxf(scene.eyeHeight,scene.awakeHeight)/2+17);
  // Pokes/kisses use only black silhouette acting. No white lip/hand detail;
  // the ordinary mouth stays on the original body and rests during the press.
- const float quiet=1-eye_acting::smooth(fmaxf(0,scene.poke.strength)/.25f);
+ const float quiet=1-eye_acting::smooth(fmaxf(0,fmaxf(scene.poke.strength,scene.poke.kiss))/.25f);
  mouth_raster::render(cx,cy,shape,opacity*quiet,[&](int x,int y,float alpha) {
   const float coverage=mask.baseCoverage(x,y);
   if(coverage>0)pixel(x,y,alpha*coverage);

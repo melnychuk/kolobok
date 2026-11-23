@@ -47,7 +47,8 @@ keeps `kShapeDrag` (0.6) of its old position, then its springs pull it along:
 the same rule the sides already used for body shape changes. A reach has weight,
 lags a little, and wobbles briefly when it lets go.
 
-**Check swell (`avatar_scene.h`, `pokeSwells`).** The capsule, shoulder fillet
+**Check swell (`avatar_scene.h`, `pokeSwells`).** *Superseded by the round
+pseudopod below; kept for history.* The capsule, shoulder fillet
 and convex envelope are gone. A check now swells the body toward its numeral as
 a smooth bell (`(1-t²)³`). In vertical layouts it swells the facing side; in
 the paired layout it swells the lower rim. Reflow blends the two. The reach is
@@ -107,3 +108,70 @@ Tests:
   looking at the session's frames.
 
 Not checked: the Stick's frame timing and how the motion feels on the device.
+
+## Follow-up: checks poke with a round blob; kisses nuzzle
+
+Feedback, in rounds:
+
+1. In the working layout (active only, numeral beside the face) the check
+   looked like a bump, not a poke. The whole facing side swelled (a bell up to
+   130 rows tall), the body leaned 6px toward the numeral and pressed another
+   3px, and the rim near the numeral was kicked.
+2. A slim, necked pseudopod was too pointy; then a sorting-style lobe (round
+   tip, flared skirt) still read as a cone. The poke should be round.
+3. With both counters on screen the done counter should not be poked, and the
+   kiss looked like another poke.
+
+**Poke shape (`avatar_scene.h`, `pokeMask`, `domeDepth`).** A check grows a
+circular cap out of the body toward its numeral: sideways out of the facing
+side in a vertical layout (edge rows), down out of the lower rim when paired
+(rim columns); reflow blends their rise. The cap's radius is its resting
+length (13..18px, at least its height, so at most a half circle and never an
+undercut; downward caps also widen toward a wide numeral's half-width). A
+tangent fillet circle (`kPokeFillet` 8px) joins it to the body: a smooth (C1)
+rounded union, with no crease. The cap emerges top first, the fillet growing
+with it, so zero strength is exactly no poke. Its top rests `kPokeGap` (2px)
+short of the numeral's near edge, so its roundness shows instead of hiding
+behind the first glyph stroke. Length is measured from the live
+(membrane-carried) edge and clamped to 12..34px. A small root swell
+(`kPokeSag`, 12% of the length) is carried by the membranes for weight and
+follow-through.
+
+**Poke timeline (`Checks::shape`, body time).** Rise over 380ms, two 7px jabs
+(430–700ms and 740–1020ms) that bring the cap into the numeral, retract from
+1100ms over 420ms. The numeral reacts only through the existing
+advancing-contact spring.
+
+**Body.** It no longer lunges. During a poke the glance's lean toward the
+numeral is dropped and the body braces 7px away (vertical) or lifts 10px with
+its width at rest (paired), so the cap reaches across a visible gap. The
+authored rim kick is removed.
+
+**Paired done checks are glances.** With both counters present, a check of
+the completed counter never presses or kisses (`Checks::pairedDone`, applied
+when a check begins and in `moment()`, including fixtures): the warm look
+toward it remains, the active counter is still poked.
+
+**Kiss = cheek nuzzle.** Every third press of a lone completed counter is a
+kiss, now with no blob and no jab: the eyes close into happy curves and stay
+closed, the body leans 5px in, the facing side swells softly against the
+numeral (a 64-row bell reaching 1px into it, `kCheekWidth`/`kCheekOverlap`,
+carried by the membrane), rubs it with two slow up-and-down strokes
+(650–1350ms, ±2.2px), then eases back by 1800ms. The completed-check blink is
+skipped during a kiss.
+
+Tests: `tests/test_avatar_poke.cpp` checks the facing edge moves outward only
+and only near the numeral; a round cap about as wide as it is long whose top
+rests `kPokeGap` short and jabs into the numeral; no added crease (the turn a
+poke adds between neighbouring edge samples stays under 80°; a right-angled
+crease measured 110–120°, the cap meeting the steep paired rim near a screen
+corner about 73°); every added opaque pixel 8-connected to the body;
+raster/coverage identity; real contact with >1px numeral travel in all 125
+poking performances (minimum 1.23px); no poke or kiss in the 35 paired done
+checks; and the kiss as a broad cheek with contact and a lean-in.
+`tests/test_avatar_interaction.cpp` checks scheduled paired done checks are
+glances and that lone done checks still kiss. `tests/test_check_swell.cpp`
+plays every check through the membranes: localized, outward-only, a blob not
+a bump (kisses excepted), follow-through that settles, continuous reflow.
+
+Not checked: how it looks and moves on the Stick.
