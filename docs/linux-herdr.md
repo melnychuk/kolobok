@@ -72,10 +72,14 @@ port: do not run a flasher or another bridge at the same time.
 
 The firmware wire protocol is `C|active|attention|done[|quake-visible]\n`.
 The optional presence field is `1` while Hyprland shows `special:agent-pane` on
-any monitor; otherwise the bridge omits it. The bridge checks visibility on its
-two-second background snapshot poll, with a one-second Hyprland timeout. Unknown
-visibility clears presence without breaking task heartbeats. Presence is
-display-only: it does not invent tasks or acknowledge unread completions.
+any monitor, or while the mapped, non-hidden native Herdr window
+(`org.omarchy.herdr-quake`) is shown in Omarchy's shared `special:dropdown`.
+Opening Voice alone does not count: a stashed Herdr window is not visible.
+Explicit native and combined adapters use their configured workspaces instead.
+The bridge checks visibility on its two-second background snapshot poll, with a
+one-second timeout per Hyprland query. Unknown visibility clears presence without
+breaking task heartbeats. Presence is display-only: it does not invent tasks or
+acknowledge unread completions.
 
 Active includes working and blocked agents, not idle tabs. For legacy CLI tasks,
 completion edges are tracked locally by the bridge; a viewed focused task clears

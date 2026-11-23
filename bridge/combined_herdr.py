@@ -87,7 +87,8 @@ class Source:
         try:
             if self.module is None:
                 self.module = load_helper(self.helper)
-            snapshot = snapshot_with_presence(self.module)
+            # In combined mode, only explicitly registered native sources own presence.
+            snapshot = snapshot_with_presence(self.module, include_native_dropdown=False)
             tasks = snapshot.get("tasks", [])
             if not isinstance(tasks, list):
                 raise ValueError("Invalid task snapshot")

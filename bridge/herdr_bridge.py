@@ -138,16 +138,23 @@ class TaskState:
                                          not t.get("focused", False), t["key"]), default=None)
 
 
-def snapshot_with_presence(helper):
+def snapshot_with_presence(helper, *, include_native_dropdown=True):
     """Read quake visibility even with no agents; never acknowledge tasks here."""
     snapshot = dict(helper.snapshot())
     if "quake_visible" in snapshot:
-        return snapshot  # Native helpers resolve their own window/workspace.
+        return snapshot  # Explicit helpers resolve their own window/workspace.
     try:
         monitors = json.loads(helper.run(["hyprctl", "-j", "monitors"], timeout=1))
-        snapshot["quake_visible"] = any(
-            m.get("specialWorkspace", {}).get("name") == "special:agent-pane"
-            for m in monitors)
+        shown = {m.get("specialWorkspace", {}).get("name") for m in monitors}
+        visible = "special:agent-pane" in shown
+        if not visible and include_native_dropdown and "special:dropdown" in shown:
+            # Voice shares this workspace; a running Herdr app may be stashed.
+            clients = json.loads(helper.run(["hyprctl", "-j", "clients"], timeout=1))
+            visible = any(c.get("class") == "org.omarchy.herdr-quake"
+                          and c.get("mapped") is True and c.get("hidden") is False
+                          and c.get("workspace", {}).get("name") == "special:dropdown"
+                          for c in clients)
+        snapshot["quake_visible"] = visible
     except (ValueError, TypeError, AttributeError, OSError, RuntimeError,
             subprocess.TimeoutExpired):
         snapshot["quake_visible"] = False

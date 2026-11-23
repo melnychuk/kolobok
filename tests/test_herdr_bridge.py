@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import Mock, patch
 
@@ -81,6 +82,40 @@ class HerdrBridgeTests(unittest.TestCase):
         self.assertNotIn("quake_visible", helper.snapshot.return_value)
         helper.run.return_value = '[{"specialWorkspace": {"name": "special:other"}}]'
         self.assertFalse(herdr_bridge.snapshot_with_presence(helper)["quake_visible"])
+
+    def test_shared_dropdown_wakes_only_for_visible_native_herdr(self):
+        helper = Mock()
+        helper.snapshot.return_value = {"tasks": []}
+        workspace = "special:dropdown"
+        monitors = [{"specialWorkspace": {}}, {"specialWorkspace": {"name": workspace}}]
+        native = {"class": "org.omarchy.herdr-quake", "mapped": True,
+                  "hidden": False, "workspace": {"name": workspace}}
+        voice = {**native, "class": "org.omarchy.dropdown-pane"}
+        clients = [voice, native]
+        helper.run.side_effect = lambda argv, timeout: json.dumps(
+            monitors if argv[-1] == "monitors" else clients)
+        state = TaskState()
+
+        def heartbeat(**kwargs):
+            return state.update(herdr_bridge.snapshot_with_presence(helper, **kwargs))
+
+        self.assertEqual(heartbeat(), b"C|0|0|0|1\n")
+        self.assertEqual(heartbeat(include_native_dropdown=False), b"C|0|0|0\n")
+        for inactive in ({"hidden": True}, {"mapped": False},
+                         {"workspace": {"name": "special:dropdown-stash"}}):
+            with self.subTest(inactive=inactive):
+                clients[1] = {**native, **inactive}
+                self.assertEqual(heartbeat(), b"C|0|0|0\n")
+        clients[1] = native
+        monitors.pop()  # App remains mapped while its workspace is closed.
+        self.assertEqual(heartbeat(), b"C|0|0|0\n")
+
+    def test_shared_dropdown_client_query_failure_keeps_task_counts(self):
+        helper = Mock()
+        helper.snapshot.return_value = {"tasks": [task("working")]}
+        helper.run.side_effect = ['[{"specialWorkspace": {"name": "special:dropdown"}}]',
+                                  herdr_bridge.subprocess.TimeoutExpired("hyprctl", 1)]
+        self.assertEqual(TaskState().update(herdr_bridge.snapshot_with_presence(helper)), b"C|1|0|0\n")
 
     def test_visibility_failure_does_not_break_task_heartbeat_or_latch_awake(self):
         helper = Mock()
