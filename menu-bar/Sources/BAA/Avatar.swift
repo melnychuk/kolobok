@@ -13,12 +13,15 @@ import AppKit
 /// The face's expression for the current status. A blink is a passing frame, not a face.
 enum Face: CaseIterable, Equatable, Sendable {
     case idle, working, done, attention, asleep, puzzled
+    /// Both eyes squeezed half shut: only seen as a completion's green wipes
+    /// over the frightened face (`Celebration`).
+    case wincing
 
     /// Expressions whose eyes are open enough to blink.
     var blinks: Bool {
         switch self {
         case .idle, .working, .attention, .puzzled: return true
-        case .done, .asleep: return false
+        case .done, .asleep, .wincing: return false
         }
     }
 }
@@ -118,7 +121,8 @@ enum AvatarArt {
     private enum Key: Hashable {
         case face(Face, blinking: Bool, Layout)
         case sides(LeftHint?, peak: Bool, charged: Bool, Layout)
-        case flash(Face, Layout)
+        case flash(Layout, edge: Int?)
+        case wipe(LeftHint?, Layout, edge: Int)
         case blank(Layout)
     }
 
@@ -160,30 +164,50 @@ enum AvatarArt {
     }
 
     /// The completion flash: the whole icon, face, sides and moat, in solid
-    /// green, with only the eyes cut out. Not a template: it's drawn over `blank`.
+    /// green, the avatar gone into it. Not a template: it's drawn over `blank`,
+    /// or with an `edge` (in points), only left of a ragged line around it, as
+    /// the green wipes in.
     @MainActor
-    static func flash(_ face: Face, layout: Layout) -> NSImage {
-        cached(.flash(face, layout)) {
+    static func flash(layout: Layout, edge: Int? = nil) -> NSImage {
+        cached(.flash(layout, edge: edge)) {
             let image = NSImage(size: NSSize(width: layout.width, height: itemHeight))
             guard let green = StickColor.done.usingColorSpace(.sRGB) else { return image }
             for scale in [1, 2] {
                 let silhouette = body.rows(scale: scale).map { $0.map(level) }
-                let eyed = faceAlpha(face, scale: scale)
                 image.addRepresentation(bitmap(width: layout.width, scale: scale) { column, row in
                     let faceRow = row - (itemHeight - faceHeight) / 2 * scale
-                    guard silhouette.indices.contains(faceRow) else { return .clear }
+                    guard silhouette.indices.contains(faceRow),
+                          column < wipeReach(edge: edge, row: row / scale, width: layout.width) * scale else {
+                        return .clear
+                    }
                     let side = sideCoverage(column: column, faceRow: faceRow, silhouette: silhouette,
                                             layout: layout, scale: scale)
                     let faceColumn = column - layout.faceX * scale
-                    // The face keeps its eyes; the sides fill only around its body.
+                    // The face's body, and the sides around it.
                     let alpha = silhouette[faceRow].indices.contains(faceColumn)
-                        ? eyed[faceRow][faceColumn] + max(side.left, side.done) * (1 - silhouette[faceRow][faceColumn])
+                        ? max(silhouette[faceRow][faceColumn], max(side.left, side.done))
                         : max(side.left, side.done)
                     return Pixel(red: green.redComponent, green: green.greenComponent,
                                  blue: green.blueComponent, alpha: alpha)
                 })
             }
             return image
+        }
+    }
+
+    /// The completion wipe: green sweeping across the icon from the left, up to
+    /// `edge` points, over its charged sides. Drawn over the frightened face,
+    /// it covers the face as it passes; the face shows right of the edge.
+    @MainActor
+    static func wipe(left: LeftHint?, layout: Layout, edge: Int) -> NSImage {
+        let sides = sides(left: left, charged: true, layout: layout)
+        let green = flash(layout: layout, edge: edge)
+        return cached(.wipe(left, layout, edge: edge)) {
+            NSImage(size: NSSize(width: layout.width, height: itemHeight), flipped: false) { rect in
+                sides?.draw(in: rect)
+                green.draw(in: rect)
+                return true
+            }
         }
     }
 
@@ -333,5 +357,24 @@ enum StickColor {
 
     private static func rgb(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> NSColor {
         NSColor(srgbRed: red / 255, green: green / 255, blue: blue / 255, alpha: 1)
+    }
+}
+
+// MARK: - Completion wipe
+
+extension AvatarArt {
+    /// How far the completion wipe reaches along one row, in points: `edge`,
+    /// give or take three points in bands three points tall, so its leading
+    /// edge breaks into tongues like a burst. The same at every scale and
+    /// different at each step, so it flickers as it crosses. No wipe (nil) or
+    /// a finished one reaches the whole way.
+    static func wipeReach(edge: Int?, row: Int, width: Int) -> Int {
+        guard let edge, edge < width else { return width }
+        let band = row / 3
+        var hash = UInt32(truncatingIfNeeded: (band &* 73_856_093) ^ (edge &* 19_349_663))
+        hash ^= hash >> 13
+        hash = hash &* 0x5BD1_E995
+        hash ^= hash >> 15
+        return edge + Int(hash % 7) - 3
     }
 }

@@ -131,29 +131,42 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func drawAvatar(_ snapshot: Snapshot, on button: NSStatusBarButton) {
         let now = ProcessInfo.processInfo.systemUptime
+        // The old icon until the green covers it, as on the Stick.
+        let before = celebration?.before ?? snapshot
+        let beforeLayout = { AvatarArt.layout(left: before.leftHint, done: before.hasUnreadCompletion) }
+        let layout = { AvatarArt.layout(left: snapshot.leftHint, done: snapshot.hasUnreadCompletion) }
         switch celebration?.frame(at: now) {
         case .charge(let lit)?:
-            // The old icon until the flash covers it, as on the Stick.
-            let before = celebration?.before ?? snapshot
-            let layout = AvatarArt.layout(left: before.leftHint, done: before.hasUnreadCompletion)
-            button.image = AvatarArt.image(before.face, layout: layout)
-            sides.image = AvatarArt.sides(left: before.leftHint, charged: lit, layout: layout)
-        case .flash?:
-            let layout = AvatarArt.layout(left: snapshot.leftHint, done: snapshot.hasUnreadCompletion)
-            button.image = AvatarArt.blank(layout: layout)
-            sides.image = AvatarArt.flash(snapshot.face, layout: layout)
+            button.image = AvatarArt.image(before.face, layout: beforeLayout())
+            sides.image = AvatarArt.sides(left: before.leftHint, charged: lit, layout: beforeLayout())
+        case .fright?:
+            // The request face's wide eyes.
+            button.image = AvatarArt.image(.attention, layout: beforeLayout())
+            sides.image = AvatarArt.sides(left: before.leftHint, charged: true, layout: beforeLayout())
+        case .wipe(let progress)?:
+            // Green sweeps across the old icon, from its charged side over the
+            // frightened face, a point at a time, and the eyes squeeze shut.
+            let layout = beforeLayout()
+            let eyes = Celebration.eyes(wiped: progress)
+            button.image = AvatarArt.image(eyes.face, blinking: eyes.blinking, layout: layout)
+            sides.image = AvatarArt.wipe(left: before.leftHint, layout: layout,
+                                         edge: Int((Double(layout.width) * progress).rounded(.up)))
+        case .gone?:
+            // Solid green in the new icon's shape, before the face comes back.
+            button.image = AvatarArt.blank(layout: layout())
+            sides.image = AvatarArt.flash(layout: layout())
         case .finished?, nil:
-            let layout = AvatarArt.layout(left: snapshot.leftHint, done: snapshot.hasUnreadCompletion)
-            button.image = AvatarArt.image(snapshot.face, blinking: blinking, layout: layout)
-            sides.image = AvatarArt.sides(left: snapshot.leftHint, attentionPeak: attentionPeak, layout: layout)
+            button.image = AvatarArt.image(snapshot.face, blinking: blinking, layout: layout())
+            sides.image = AvatarArt.sides(left: snapshot.leftHint, attentionPeak: attentionPeak, layout: layout())
         }
     }
 
-    /// Plays a new completion's charge and flash. A completion during it
-    /// doesn't replay it; the flash and final icon show the latest counts.
+    /// Plays a new completion's charge, fright and wipe. A completion during it
+    /// doesn't replay it; the solid green and final icon show the latest counts.
     private func celebrate(from before: Snapshot) {
         celebration = Celebration(started: ProcessInfo.processInfo.systemUptime, before: before)
-        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] timer in
+        // Fast enough for the wipe to move a point or so at a time.
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
             MainActor.assumeIsolated {
                 guard let self, let button = self.item?.button else { return timer.invalidate() }
                 if self.celebration?.frame(at: ProcessInfo.processInfo.systemUptime) == .finished {

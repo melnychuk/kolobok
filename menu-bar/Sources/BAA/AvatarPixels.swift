@@ -177,6 +177,8 @@ extension AvatarArt {
         case .working: (eyes, lidsMeet) = (pair(focused, 2, 6), 8)
         case .done: (eyes, lidsMeet) = (pair(happy, 4, 5), 7)
         case .attention: (eyes, lidsMeet) = (pair(wide, 2, 3), 6)
+        // Halfway from wide (rows 3-9) to shut (row 6), on the same centre line.
+        case .wincing: (eyes, lidsMeet) = (pair(squint, 2, 5), 6)
         case .asleep: (eyes, lidsMeet) = (pair(closed, 3, 8), 8)
         case .puzzled:
             (eyes, lidsMeet) = ([Eye(art: open, left: 3, top: 3), Eye(art: squint, left: 11, top: 6)], 6)

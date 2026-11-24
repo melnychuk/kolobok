@@ -39,10 +39,12 @@ shows the menu bar behind it and matches the eyes. The `!` steps between the
 Stick's request yellow and orange. Open eyes blink every few seconds.
 
 A new completion plays a short version of the Stick's transfer cue: the blue
-side charges with green light, flickering faster and faster, then the whole icon
-flashes green, eyes cut out, before the done icon appears (about one second).
-Without active work before it, the icon just flashes. None of this animates if
-macOS **Reduce motion** is on.
+side charges with green light, flickering faster and faster, the eyes fly open
+in fright, then green wipes across the face from the charged side, its edge
+breaking into flickering tongues like a burst, while the eyes squeeze shut,
+until the icon is solid green, and the face comes back happy (about 1.4
+seconds). Without active work before it, the face is startled straight away.
+None of this animates if macOS **Reduce motion** is on.
 
 Click the avatar for a standard macOS menu of your agents, grouped under their
 Herdr spaces in Herdr's order. Each takes one line: a pane name you set, or
