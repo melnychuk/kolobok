@@ -169,8 +169,6 @@ body::after {
 .k-light { background: #f4f6f9; color: #3c4148; }
 
 .hero .card { position: relative; max-width: 520px; transition: none; }
-.eyebrow { display: inline-flex; align-items: center; gap: 10px; margin: 0 0 18px; padding: 6px 14px 6px 10px; border: 1px solid var(--line); border-radius: 99px; font: 13px var(--mono); color: var(--muted); background: #ffffff08; }
-.eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mood); box-shadow: 0 0 10px var(--mood); }
 h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045em; margin: 0 0 22px; font-weight: 800; }
 .squiggle {
   background: linear-gradient(100deg, var(--green), var(--blue) 45%, var(--coral) 80%, var(--yellow));
@@ -179,13 +177,10 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 }
 @keyframes shimmer { to { background-position: 100% 0; } }
 .lead { font-size: clamp(19px, 1.6vw, 23px) !important; color: #d6dcef !important; }
-.card .realdeal { display: flex; align-items: center; gap: 12px; font-size: 15px; line-height: 1.45; color: var(--muted); }
-/* Two text lines tall (15px x 1.45 x 2). */
-.card .realdeal b { color: var(--ink); font-weight: 600; }
-.realdeal .no-video { flex: none; width: 44px; height: 44px; color: #aab3cf; }
-.no-video .cut, .no-video .strike { fill: none; stroke-linecap: round; }
-.no-video .cut { stroke: var(--bg); stroke-width: 6; }  /* gap where the strike crosses the frame */
-.no-video .strike { stroke: var(--yellow); stroke-width: 2.6; }
+.card .realdeal { display: flex; align-items: center; gap: 8px; font-size: 15px; line-height: 1.45; color: var(--muted); }
+.realdeal .no-video { flex: none; width: 24px; height: 16px; color: #aab3cf; }
+.no-video .cut { stroke: var(--bg); stroke-width: 4; }
+.no-video .strike { stroke: var(--yellow); stroke-width: 1.5; }
 /* The track keeps the hero pinned past the end of its scene, through the
    fade into the next chapter, without adding space to the scroll timeline. */
 .chapter.scene { --scene-scroll: 110vh; position: relative; display: block; padding: 0; min-height: 0; height: calc(100vh + var(--scene-scroll)); height: calc(100svh + var(--scene-scroll)); }
@@ -313,9 +308,7 @@ pre code { font-size: inherit; color: #d6def5; }
 .hero .card:has(pre.install) { max-width: 600px; }
 .hero pre.install { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding: 10px 10px 10px 16px; font-size: 12px; overflow: hidden; }
 .hero pre.install code { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-.hero pre.install .copy-btn { position: static; flex: none; }
-.card .install-note { margin: 8px 0 0; }
-.install-note code { color: var(--eye); }
+.hero pre.install .copy-btn { position: static; flex: none; min-height: 28px; }
 .copy-btn { position: absolute; top: 10px; right: 10px; border: 1px solid var(--line); background: #ffffff10; border-radius: 9px; padding: 3px 10px; font: 12px var(--mono); }
 footer { max-width: 1200px; margin: 110px auto 0; padding: 32px clamp(16px, 4vw, 48px) 56px; border-top: 1px solid var(--line); color: var(--muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
 footer p { margin: 0; }
@@ -342,14 +335,11 @@ footer p { margin: 0; }
   .card h2 { font-size: 30px; margin: 10px 0 8px; }
   .card p { font-size: 16px; }
   h1 { font-size: 46px; margin-bottom: 12px; }
-  .eyebrow, .card .eyebrow { font-size: 10.5px; margin-bottom: 12px; padding: 4px 12px 4px 9px; gap: 7px; border-radius: 12px; white-space: nowrap; }
-  /* Opening copy: compact, like the later chapters, so the stick stays in
-     view above it. The prompt keeps one line; Copy still copies all of it. */
-  .hero .card .lead { font-size: 16px !important; margin-bottom: 0; }
-  .hero .card .realdeal { display: none; }
+  /* Keep the prompt on one line on phones; the button still copies all of it. */
+  .hero .card .lead { font-size: 16px !important; margin-bottom: 8px; }
+  .hero .card .realdeal { font-size: 13px; }
   .hero pre.install { margin-top: 12px; padding: 5px 5px 5px 14px; }
   .hero pre.install code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
-  .card .install-note { font-size: 12.5px; }
   .scene-pin { justify-content: center; align-items: flex-end; padding: 0 18px 92px; }
   .nod { bottom: 26px; }
   .js-chapters .chapter.pinned { min-height: 130svh; }

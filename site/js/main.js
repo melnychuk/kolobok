@@ -726,12 +726,22 @@ async function main() {
 // --- Static page bits --------------------------------------------------------
 $$("pre[data-copy]").forEach((pre) => {
   const b = document.createElement("button");
+  const label = pre.dataset.copy || "Copy";
+  const hint = pre.dataset.copyHint;
+  b.type = "button";
   b.className = "copy-btn";
-  b.textContent = "Copy";
+  b.textContent = label;
+  if (hint) {
+    b.title = hint;
+    b.setAttribute("aria-description", hint);
+  }
+  let reset;
   b.onclick = async () => {
     await navigator.clipboard.writeText(pre.querySelector("code").textContent);
     b.textContent = "Copied!";
-    setTimeout(() => (b.textContent = "Copy"), 1400);
+    if (hint) toast(`Copied! ${hint}.`);
+    clearTimeout(reset);
+    reset = setTimeout(() => (b.textContent = label), 1400);
   };
   pre.append(b);
 });
