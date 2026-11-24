@@ -52,6 +52,13 @@ link. Captures from the two semantics must not be compared as one series, and
 historical envelopes stay fingerprint-gated to their own builds. If the second
 internal DMA buffer cannot be allocated, firmware falls back to the old
 synchronous single-buffer path (the transfer is then inside `flush` again).
+
+**And again with native-scan presentation (2026-11-24).** M5GFX busy-waited
+through the first 32KB SPI transaction of every frame, so double-buffered
+`flush` was really ~6.5ms. Firmware now copies the frame into the panel's
+scan order and a task on core 0 sends it: `flush` is the wait for the
+previous transfer to finish plus that copy (~0.57ms), and the period is 20ms
+(50fps). See [render performance](render-performance.md).
 A completed display transfer is **not** photon/scanout completion or panel refresh.
 The 64,800 pixel bytes have a source-derived 12,960us wire-only lower bound at the
 configured 40MHz; driver/conversion/DMA gaps may add cost.

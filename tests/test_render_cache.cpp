@@ -63,7 +63,36 @@ int main(int argc,char** argv) {
    case 9:changed.alertPresence=nextafterf(0,1);break;
    case 10:changed.base^=1;break;
   }
+  // Portrait, wash and alert have zero presence here: color() cannot show
+  // them, so changing them reuses the rows (checkRows still compares every
+  // cached pixel with color() for the changed state).
+  const bool hidden=member==2||member==6||member==8;
+  checkRows(changed,!hidden);checkRows(changed,false);checkRows(initial,!hidden);
+ }
+ // Visible, the same colors invalidate.
+ for(int member=0;member<3;++member) {
+  auto visible=initial;
+  visible.portraitPresence=member==0?.5f:0;
+  visible.washPresence=member==1?.5f:0;
+  visible.alertPresence=member==2?.5f:0;
+  checkRows(visible,true);
+  auto changed=visible;
+  if(member==0)changed.portrait^=1;
+  if(member==1)changed.wash^=1;
+  if(member==2)changed.alert^=1;
   checkRows(changed,true);checkRows(changed,false);checkRows(initial,true);
+ }
+ // A status below .01 presence shows the background instead of its color.
+ {
+  auto faint=initial;
+  faint.activePresence=.005f;
+  checkRows(faint,true);
+  auto changed=faint;
+  changed.active^=1;
+  checkRows(changed,false);
+  changed.activePresence=.01f;
+  checkRows(changed,true);
+  checkRows(initial,true);
  }
  for(int frame=0;frame<400;++frame) {
   auto state=initial;

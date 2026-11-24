@@ -39,7 +39,7 @@ using avatar_frame::kScreenWidth;
 using avatar_frame::kScreenHeight;
 using avatar_frame::kBlack;
 using Face = avatar_behavior::Mode;
-constexpr uint32_t kFrameMs = 33;
+constexpr uint32_t kFrameMs = 20;
 
 // Everything a frame shows; the rest of this file is the hardware around it.
 avatar_frame::Avatar avatar;
@@ -79,6 +79,12 @@ bool doubleBuffered = false;
 // shearing diagonally through every moving edge.
 M5Canvas scanout(&M5.Display);
 bool nativeScan = false;
+// Native scan sends from a task on core 0 while core 1 renders the next frame.
+// The ESP32-S3 SPI carries at most 32KB per transaction, and M5GFX busy-waits
+// through the first one of each 64,800-byte frame (6.5ms at 40MHz): on the
+// render core that wait was most of the frame's presentation cost.
+TaskHandle_t presenter = nullptr;
+SemaphoreHandle_t scanoutIdle = nullptr;  // Given when a transfer has finished reading `scanout`.
 bool transferOpen = false;
 M5Canvas& frame() { return *frameCanvas; }
 #if STICK_S3_AMBIENT_STARTLE
@@ -330,8 +336,19 @@ void updateVoice() {
 // Close the open transfer: waits for the previous frame's DMA to finish.
 void finishTransfer() {
   if (!transferOpen) return;
-  M5.Display.endWrite();
+  if (presenter) xSemaphoreTake(scanoutIdle, portMAX_DELAY);
+  else M5.Display.endWrite();
   transferOpen = false;
+}
+
+void presenterLoop(void*) {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    M5.Display.startWrite();
+    scanout.pushSprite(0, 0);
+    M5.Display.endWrite();  // Waits for the DMA tail.
+    xSemaphoreGive(scanoutIdle);
+  }
 }
 
 // Queue the finished frame and, when double buffered, return while DMA sends
@@ -343,9 +360,13 @@ void presentFrame() {
   if (nativeScan) {
     native_scan::transpose(static_cast<const uint16_t*>(frame().getBuffer()), kScreenWidth, kScreenHeight,
                            static_cast<uint16_t*>(scanout.getBuffer()), rotation);
-    M5.Display.startWrite();
     transferOpen = true;
-    scanout.pushSprite(0, 0);
+    if (presenter) {
+      xTaskNotifyGive(presenter);
+    } else {
+      M5.Display.startWrite();
+      scanout.pushSprite(0, 0);
+    }
     return;
   }
   M5.Display.startWrite();
@@ -604,6 +625,15 @@ void setup() {
                scanout.bufferLength() >= kScreenWidth * kScreenHeight * 2;
   if (nativeScan) {
     M5.Display.setRotation(0);
+    // Same priority as the render loop (core 1); audio tasks (priority 2)
+    // still preempt it. Without the task, frames are sent from the loop.
+    scanoutIdle = xSemaphoreCreateBinary();
+    if (scanoutIdle &&
+        xTaskCreatePinnedToCore(presenterLoop, "scanout", 4096, nullptr, 1, &presenter, 0) != pdPASS) {
+      presenter = nullptr;
+      vSemaphoreDelete(scanoutIdle);
+      scanoutIdle = nullptr;
+    }
   } else {
     scanout.deleteSprite();
     doubleBuffered = !firstInPsram && canvases[1].createSprite(kScreenWidth, kScreenHeight) != nullptr;

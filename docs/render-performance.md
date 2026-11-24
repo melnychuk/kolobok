@@ -571,3 +571,57 @@ The copy costs ~0.55ms. The flush exposes something else: it was a constant
 transaction carries at most 32KB, so M5GFX's `Bus_SPI::writeBytes` busy-waits
 through the first half of a 64,800-byte frame before queuing the second. The
 "overlapped" DMA only ever hid the second half of the transfer.
+
+## 50fps: presenter task, rotated eye spans, row-cache key — measured 2026-11-24
+
+Same scripted workload and 72s O2 captures as above. Rendering takes ~11ms
+median, so once the transfer leaves the render core 20ms frames fit:
+
+- **Presenter task.** A FreeRTOS task on core 0 (priority 1; the audio tasks
+  at 2 still preempt it) sends `scanout` and waits out the whole transfer.
+  The render loop on core 1 waits only for the previous transfer to finish
+  before refilling `scanout`, then copies and notifies. Without the task (as
+  in the host harness) frames are sent from the loop as before. The panel
+  stays at rotation 0, so the task is the only code on the display bus while
+  awake; naps wait for it first.
+- **20ms frames** (`kFrameMs`). Animation runs on `millis()`, so it only
+  samples more often; the device-frame hash is now 2,602 frames at 20ms (the
+  33ms build still reproduces the old hash with all of these changes).
+- **Rotated eyes get interior spans.** Any `pose.tilt` sent both eyes through
+  the per-pixel path (a division and a square root per pixel): 9–9.5ms eye
+  stages in paired working clips. `eye_raster::rotatedSpan` solves each row's
+  interior exactly: the rounded box is its core rectangle dilated by `r+T`, so
+  the row's chord is the hull of the chords through two slabs and four corner
+  disks; the lid is a convex quadratic in x; cheek and lower lid use the
+  unrotated spans' linear bound. Same 0.02px margin, so every span pixel still
+  evaluates to alpha exactly 1. `test_eye_pass` (68,973,623 exact ordered
+  callbacks against the frozen oracle, tilts −90..90) passes; spans now cover
+  84.5% of oracle pixels, up from 64.5%. Happy-closed arches stay per-pixel.
+- **Row-cache key.** The four background rows were rebuilt whenever any
+  `State` field changed, including colors `color()` cannot show: the request
+  field's pulse kept changing `alert` at zero presence. The key now zeroes a
+  status color below .01 presence and any portrait/wash/alert color at zero
+  presence (`test_render_cache` checks hidden changes hit and visible ones
+  miss, comparing every cached pixel with `color()`).
+
+| Same workload | Native scan 30fps `6373ce89` | Presenter + 50fps `b96947df` | + spans, cache key `222096a1` |
+|---|---:|---:|---:|
+| Cadence (all / working) | 30.3 / 30.3fps | 49.6 / 49.1fps | **50.0 / 50.0fps** |
+| Render median / p95 | 11.26 / 16.43ms | 11.80 / 19.12ms | 11.09 / 16.98ms |
+| Working render p95 | 16.05ms | 21.67ms | 16.75ms |
+| Flush median | 7.10ms | 0.57ms | 0.57ms |
+| Frames over 19ms | — | — | 13 of 3,350 |
+
+Idle and sleeping stage medians are identical with and without the presenter
+task, so sending from core 0 does not slow the render core. The 13 remaining
+late frames are two numeral-cache cold misses when a completion starts
+(badges 10–14ms) and about three sorting frames per paired arrival (mask
+6–7ms plus a background rebuild).
+
+**Not done: scan-synced presentation.** GSCAN reads back (see
+[transport timing](stick-transport-timing.md)), but which counts are the
+visible rows isn't established, and a wrong guess would make tearing worse.
+With the write in scan order and roughly as fast as the scan (13ms against a
+~17.2ms refresh), most frames should already land without a visible tear.
+Timing them against GSCAN, or tuning FRCTRL2 so the scan runs just slower than
+the write, needs someone watching the panel.

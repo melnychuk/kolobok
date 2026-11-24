@@ -74,6 +74,14 @@ models this (off by default, so historical envelopes keep the synchronous
 model); `transport_scenarios.h` checks that an assumed 25ms render fits 33ms
 only with overlap and that overlap never hides a >33ms render.
 
+That overlap was only half real: on the ESP32-S3 one SPI transaction carries
+at most 32KB, and `Bus_SPI::writeBytes` busy-waits through the first of the
+frame's two before queuing the second (measured: a constant 6.55ms flush).
+Since 2026-11-24 the panel stays at rotation 0, firmware copies each frame
+into the panel's scan order (`native_scan.h`) and a task on core 0 sends it
+while core 1 renders the next one, at a 20ms period; see
+[render performance](render-performance.md).
+
 For 32,400 RGB565 pixels:
 
 ```text
@@ -93,6 +101,19 @@ The driver leaves the FRCTRL2 setting commented out because variants differ.
 We did **not** assume 60Hz, 119Hz, or add a fabricated panel scan/TE delay. The
 renderer does not wait for scanline/TE before pushing frames. Pixel arrival in
 controller RAM is not the same as photon/scanout timing.
+
+Measured since (2026-11-24, GSCAN probe): this Stick's panel refreshes every
+~17.2ms (~58Hz) at its default FRCTRL2 (0x0F, the same as writing 0x0F).
+FRCTRL2 does change it: 0x1F 26.1ms, 0x15 20.5ms, 0x0B 14.9ms, 0x08 13.2ms,
+0x05 11.6ms, 0x03 10.4ms, 0x01 9.3ms, 0x00 8.8ms. Firmware still leaves it
+at the default. GSCAN (0x45) reads back over the 3-wire bus as
+`[dummy, N_hi, N_lo, 0]` (`readCommand(0x45, 0, 4)`); M5GFX's
+`getScanLine()` returns 0. High and low bytes are not latched together
+(255->256 can read 0 or 256), and from 0x40 upward the value reads 0x80 too
+high (decode `N = R < 0x40 ? R : R - 0x80`). Decoded, a refresh holds at 0
+for ~1.2ms, then counts 7..~166 at ~100us per count. Which counts are the
+glass's 240 visible rows is not established, so frames are not yet timed
+against the scan.
 
 Startup code also has explicit PMIC/bus 100ms waits and an ST7789 sleep-out
 130ms wait. These are source facts, but full panel/power boot is not represented

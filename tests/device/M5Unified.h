@@ -56,6 +56,29 @@ inline long random(long limit) {
 }
 inline uint32_t esp_random() { return static_cast<uint32_t>(random(0x7fffffff)) * 2654435761u; }
 inline uint32_t getCpuFrequencyMhz() { return 240; }
+
+// FreeRTOS, as far as the firmware's presenter task goes: no tasks run here,
+// so creating one fails and the firmware presents from its own loop.
+using BaseType_t = int;
+using TaskHandle_t = void*;
+using SemaphoreHandle_t = void*;
+using TickType_t = uint32_t;
+constexpr BaseType_t pdPASS = 1, pdFAIL = 0, pdTRUE = 1;
+constexpr TickType_t portMAX_DELAY = 0xffffffffu;
+inline SemaphoreHandle_t xSemaphoreCreateBinary() {
+  static int semaphore;
+  return &semaphore;
+}
+inline BaseType_t xSemaphoreTake(SemaphoreHandle_t, TickType_t) { return pdTRUE; }
+inline BaseType_t xSemaphoreGive(SemaphoreHandle_t) { return pdTRUE; }
+inline void vSemaphoreDelete(SemaphoreHandle_t) {}
+inline BaseType_t xTaskCreatePinnedToCore(void (*)(void*), const char*, uint32_t, void*, int,
+                                          TaskHandle_t* handle, int) {
+  *handle = nullptr;
+  return pdFAIL;
+}
+inline uint32_t ulTaskNotifyTake(BaseType_t, TickType_t) { return 0; }
+inline void xTaskNotifyGive(TaskHandle_t) {}
 // As arduino-esp32 defines them: max/min are std::max/std::min (the firmware
 // passes matching types), constrain is the classic macro.
 using std::max;

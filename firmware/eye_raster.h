@@ -26,6 +26,84 @@ struct NoSpans { void operator()(int,int,int) const {} };
 // per-pixel path, so expanding spans in place reproduces the original
 // callback sequence bit for bit.
 constexpr float kSpanMargin=.02f;
+// One row of a rotated eye, along dx = x+.5-ex at row offset dy: the interval
+// of dx where every pixel is certain to have alpha exactly 1 (all distances
+// <= -.5-kSpanMargin). The eye's own coordinates are linear in dx:
+// px = dx*c+dy*s, py = -dx*s+dy*c (the per-pixel path's rotation).
+// - Rounded box: distance <= T is the core rectangle (half sizes w/2-r,
+//   h/2-r) dilated by r+T, the union of two slabs and four corner disks. That
+//   union is convex, so its chord is the hull of the parts' chords.
+// - Lid: convex quadratic in dx (nx = px/(w/2), unclamped inside the box).
+// - Cheek and lower lid: below py-base, as the unrotated spans use them.
+// Endpoints are solved in float; every constraint changes by at most a few
+// times the endpoint error per pixel of dx, far inside the margin.
+inline bool chord(float k,float m,float bound,float& lo,float& hi) {
+ if(k==0) { if(fabsf(m)>bound)return false;lo=-1e30f;hi=1e30f;return true; }
+ const float a=(-bound-m)/k,b=(bound-m)/k;
+ lo=a<b?a:b;hi=a<b?b:a;return true;
+}
+// a*dx^2+b*dx+q <= 0 with a >= 0 (stable roots).
+inline bool below(float a,float b,float q,float& lo,float& hi) {
+ if(a==0) {
+  if(b==0) { if(q>0)return false;lo=-1e30f;hi=1e30f;return true; }
+  if(b>0) { lo=-1e30f;hi=-q/b; } else { lo=-q/b;hi=1e30f; }
+  return true;
+ }
+ const float disc=b*b-4*a*q;
+ if(disc<0)return false;
+ const float root=sqrtf(disc),t=-.5f*(b+(b<0?-root:root));
+ float r1=t/a,r2=t!=0?q/t:r1;
+ if(r1>r2) { const float swap=r1;r1=r2;r2=swap; }
+ lo=r1;hi=r2;return true;
+}
+inline bool rotatedSpan(float dy,float c,float s,float w,float h,float radius,int side,
+                        float lidBase,float lidSlope,float lidCurve,bool hasUpper,
+                        bool cheek,float cheekBase,bool lowerLid,float lowerBase,float& lo,float& hi) {
+ const float target=-.5f-kSpanMargin,reach=radius+target;
+ if(reach<=0)return false;
+ const float ax=w/2-radius,ay=h/2-radius;
+ // px = c*dx+s*dy, py = -s*dx+c*dy.
+ const float pm=s*dy,qm=c*dy;
+ bool any=false;
+ lo=1e30f;hi=-1e30f;
+ const auto join=[&](bool ok,float a,float b) {
+  if(!ok)return;
+  if(a>b)return;
+  any=true;lo=a<lo?a:lo;hi=b>hi?b:hi;
+ };
+ float a1=0,b1=0,a2=0,b2=0;
+ // Slab parts: |px|<=ax+reach with |py|<=ay, and |px|<=ax with |py|<=ay+reach.
+ bool ok=chord(c,pm,ax+reach,a1,b1)&&chord(-s,qm,ay,a2,b2);
+ join(ok,a1>a2?a1:a2,b1<b2?b1:b2);
+ ok=chord(c,pm,ax,a1,b1)&&chord(-s,qm,ay+reach,a2,b2);
+ join(ok,a1>a2?a1:a2,b1<b2?b1:b2);
+ // Corner disks; the row direction (c,-s) has unit length.
+ for(int corner=0;corner<4;++corner) {
+  const float dxc=pm-(corner&1?ax:-ax),dyc=qm-(corner&2?ay:-ay);
+  const float along=c*dxc-s*dyc,rest=dxc*dxc+dyc*dyc-reach*reach;
+  // below() writes a1/b1: call it before join() reads them.
+  const bool hit=below(1,2*along,rest,a1,b1);
+  join(hit,a1,b1);
+ }
+ if(!any)return false;
+ // Lid: lidCurve*nx^2 + sign*lidSlope*nx + lidBase - py <= target.
+ if(hasUpper) {
+  const float half=w/2,na=c/half,nb=pm/half,sign=side?-1.0f:1.0f;
+  if(!below(lidCurve*na*na,2*lidCurve*na*nb+sign*lidSlope*na+s,
+            lidCurve*nb*nb+sign*lidSlope*nb+lidBase-qm-target,a1,b1))return false;
+  lo=lo>a1?lo:a1;hi=hi<b1?hi:b1;
+ }
+ // py - base <= target, linear in dx.
+ if(cheek) {
+  if(!below(0,-s,qm-cheekBase-target,a1,b1))return false;
+  lo=lo>a1?lo:a1;hi=hi<b1?hi:b1;
+ }
+ if(lowerLid) {
+  if(!below(0,-s,qm-lowerBase-target,a1,b1))return false;
+  lo=lo>a1?lo:a1;hi=hi<b1?hi:b1;
+ }
+ return hi>lo;
+}
 template<class Pixel,class Span>
 void renderSpans(float cx,float cy,float width,float height,float gap,
                  const eye_acting::Pose& pose,Pixel pixel,Span span,bool spans,
@@ -96,8 +174,21 @@ void renderSpans(float cx,float cy,float width,float height,float gap,
   const bool cachedX=normalized && c==1 && s==0 && x1-x0<columnCapacity;
   if(cachedX)for(int x=x0;x<=x1;++x)columns[x-x0]=clamp((x+.5f-ex)/(w/2),-1,1);
   const bool interiorSpans=spans && c==1 && s==0 && happyClosed==0;
+  // Rotated eyes get interior spans too (rotatedSpan below), with the same
+  // margin and the same exact per-pixel path for everything outside them.
+  const bool rotatedSpans=spans && !(c==1 && s==0) && happyClosed==0;
   for(int y=y0;y<=y1;++y) {
    int spanFirst=x1+1,spanLast=x1;
+   if(rotatedSpans) {
+    float lo,hi;
+    if(rotatedSpan(y+.5f-ey,c,s,w,h,radius,side,hasUpper?lidBase:0,hasUpper?lidSlope:0,
+                   hasUpper?lidCurve:0,hasUpper,smile>0,cheekBase,lower>0,lowerBase,lo,hi)) {
+     spanFirst=static_cast<int>(ceilf(lo+ex-.5f));spanLast=static_cast<int>(floorf(hi+ex-.5f));
+     if(spanFirst<x0)spanFirst=x0;
+     if(spanLast>x1)spanLast=x1;
+     if(spanLast<spanFirst){spanFirst=x1+1;spanLast=x1;}
+    }
+   }
    if(interiorSpans) {
     // Rounded box: distance<=T <=> |px| <= hw-r+sqrt((T+r)^2-max(qy,0)^2).
     const float target=-.5f-kSpanMargin,reach=target+radius;

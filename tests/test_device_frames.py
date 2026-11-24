@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 # Every frame of the session (tests/device/device_frames.cpp), hashed in order.
-EXPECTED = "total 915bfbff1e28b871 frames 1577"
+EXPECTED = "total 9d99e56436e3f9a3 frames 2602"
 
 
 class DeviceFramesTests(unittest.TestCase):

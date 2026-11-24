@@ -109,14 +109,28 @@ struct RowCache {
  State previous={0,0,0,0,0,0,0,0,0,0,0};
  bool valid=false;
  bool dither=true;  // The device always dithers; see color().
+ // The key forgets colors color() cannot show: a status below .01 presence
+ // falls back to the background, and a zero portrait, wash or alert adds
+ // exactly nothing. The request field's pulse and the charging glow keep
+ // changing those colors while hidden, which used to rebuild the rows on
+ // most frames of a settled face.
+ static State key(State s) {
+  if(!(clamp(s.donePresence)>=.01f))s.done=0;
+  if(!(clamp(s.activePresence)>=.01f))s.active=0;
+  if(!(clamp(s.portraitPresence)>0))s.portrait=0;
+  if(!(clamp(s.washPresence)>0))s.wash=0;
+  if(!(clamp(s.alertPresence)>0))s.alert=0;
+  return s;
+ }
  template<class Pixel>
  bool update(const State& state,Pixel pixel) {
-  if(valid && state==previous)return false;
+  const State next=key(state);
+  if(valid && next==previous)return false;
   for(int y=0;y<4;++y)for(int x=0;x<240;++x)
    pixel(x,y,color(x,y,state.done,state.active,state.donePresence,state.activePresence,
                    state.portrait,state.portraitPresence,state.wash,state.washPresence,
                    state.alert,state.alertPresence,dither,state.base));
-  previous=state;valid=true;return true;
+  previous=next;valid=true;return true;
  }
 };
 } // namespace status_background
