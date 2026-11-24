@@ -38,17 +38,18 @@ Agents when the physical Stick is plugged in. See [installing the Herdr
 widget](docs/herdr-widget.md). This is a desktop mod,
 not an extension for the terminal-only `herdr` client.
 
-## macOS Copilot menu bar (optional)
+## BAA: agent activity in the macOS menu bar (optional)
 
-Show the Copilot mascot and session status in the macOS menu bar, with or
-without a Stick. To try the states without launching any agents:
+BAA (Bar for Agent Activity) shows a miniature of the Stick's avatar in the
+macOS menu bar, for every agent Herdr runs, whatever the kind, with or without
+a Stick. To try the states without launching any agents:
 
 ```sh
-swift run --package-path menu-bar CopilotMenuBar --demo
+swift run --package-path menu-bar BAA --demo
 ```
 
-Click the mascot and use **Preview state**. Omit `--demo` for live Copilot CLI
-sessions in Herdr Desktop. See [the menu-bar guide](docs/copilot-menu-bar.md).
+Click the avatar and choose a state from **Preview**. Omit `--demo` to show the agents the
+Mac bridge reports. See [the BAA guide](docs/baa.md).
 
 ## Install the physical Stick
 
