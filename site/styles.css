@@ -69,12 +69,53 @@ body::after {
 .stage-shot {
   position: absolute; left: 69%; top: 50%; margin: 0; width: min(46vw, 720px);
   translate: calc(-50% + (1 - var(--herdr, 0)) * 100vw) -50%;
-  opacity: var(--herdr, 0); visibility: hidden; pointer-events: none;
+  opacity: calc(var(--herdr, 0) * (1 - var(--swap, 0))); scale: calc(1 - .02 * var(--swap, 0));
+  visibility: hidden; pointer-events: none;
 }
 .stage.herdr .stage-shot { visibility: visible; }
 .stage-shot img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid #ffffff26; box-shadow: 0 40px 80px -30px #000, 0 0 0 1px #0006; }
 .stage-shot[data-theme=light] .hs-dark, .stage-shot[data-theme=dark] .hs-light { display: none; }
 .stage.herdr-handoff .canvas-host canvas, .stage .now { opacity: var(--stick, 1); }
+/* Menu bar chapter: the fake macOS menu bar takes the screenshot's place and
+   frame, crossfading in as it settles (--swap, scrubbed by js/main.js). One
+   menu bar point is --z CSS px, so BAA's 2× frames (js/menubar.js) land
+   pixel for pixel. */
+.stage-menubar {
+  --z: 2;
+  position: absolute; left: 69%; top: 50%; margin: 0; width: min(46vw, 720px);
+  translate: -50% -50%; opacity: var(--swap, 0); scale: calc(1.02 - .02 * var(--swap, 0));
+  visibility: hidden; pointer-events: none;
+}
+.stage.menubar .stage-menubar { visibility: visible; }
+.mb-screen {
+  position: relative; aspect-ratio: 1400 / 863; overflow: hidden; border-radius: 14px;
+  border: 1px solid #ffffff26; box-shadow: 0 40px 80px -30px #000, 0 0 0 1px #0006;
+  background: radial-gradient(90% 120% at 85% -10%, #4c3a8f, transparent 60%),
+    radial-gradient(80% 110% at 0% 110%, #0e4a5c, transparent 65%), #151a2e;
+}
+.mb-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: calc(10px * var(--z));
+  height: calc(24px * var(--z)); padding: 0 calc(10px * var(--z));
+  background: #10121cb8; backdrop-filter: blur(18px); color: #fff; white-space: nowrap;
+  font: 500 calc(13px * var(--z)) / 1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+.mb-apple { display: block; width: calc(15px * var(--z)); height: auto; flex: none; }
+.mb-extras { display: flex; align-items: center; gap: calc(11px * var(--z)); flex: none; }
+.mb-baa { display: block; width: auto; height: calc(18px * var(--z)); image-rendering: pixelated; }
+.mb-wifi { display: block; width: calc(17px * var(--z)); height: auto; }
+.mb-battery {
+  position: relative; box-sizing: border-box; width: calc(24px * var(--z)); height: calc(11.5px * var(--z));
+  padding: calc(1.5px * var(--z)); border: calc(1px * var(--z)) solid #ffffffa6; border-radius: calc(3.5px * var(--z));
+}
+.mb-battery::after {
+  content: ""; position: absolute; top: 50%; left: 100%; translate: calc(1px * var(--z)) -50%;
+  width: calc(1.5px * var(--z)); height: calc(4px * var(--z)); border-radius: 0 9px 9px 0; background: #ffffffa6;
+}
+.mb-battery i { display: block; width: 78%; height: 100%; border-radius: calc(1.5px * var(--z)); background: #fff; }
+.mb-state {
+  position: absolute; inset: calc(24px * var(--z)) 0 0 0; display: grid; place-items: center; margin: 0;
+  font: 600 clamp(20px, 2.4vw, 30px) / 1.2 var(--display); color: #fff; text-shadow: 0 2px 18px #0008;
+}
 .stage.ready .canvas-host { opacity: 1; }
 .canvas-host canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; }
 .canvas-host canvas.can-rotate { cursor: grab; }
@@ -253,6 +294,8 @@ h1 { font-size: clamp(52px, 7vw, 104px); line-height: .9; letter-spacing: -.045e
 /* Moods: one segmented control, then a plain list of clips to play */
 .segmented { flex: 1; max-width: 380px; display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: #ffffff0b; }
 .segmented [role=tab] { flex: 1; border: 0; background: none; border-radius: 9px; padding: 6px 4px; font-size: 13px; color: var(--muted); white-space: nowrap; transition: background .2s, color .2s; }
+/* Herdr chapter: the theme switch sits between paragraphs, so it takes their gap. */
+.hm-theme { margin-bottom: 12px; }
 .segmented [role=tab]:hover { color: var(--ink); }
 .segmented .n { margin-left: 5px; font-size: 11px; opacity: .6; }
 .segmented [aria-selected=true], .segmented [aria-selected=true]:hover { background: var(--eye); color: #06070b; font-weight: 600; }
@@ -358,6 +401,8 @@ footer p { margin: 0; }
   /* Above the copy, where the stick sits on phones. */
   .stage-shot { left: 50%; top: 30%; width: min(92vw, 460px); }
   .stage-shot img { border-radius: 10px; }
+  .stage-menubar { left: 50%; top: 30%; width: min(92vw, 460px); }
+  .mb-screen { border-radius: 10px; }
   /* Playground: one group of controls at a time, picked from .pg-tabs; each
      pane gets the same height so the panel never jumps under the stick. */
   .segmented.pg-tabs { display: flex; margin-top: 12px; }
@@ -386,5 +431,5 @@ footer p { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; transition-delay: 0s !important; }
   html { scroll-behavior: auto; }
-  .stage-shot { translate: -50% -50%; }
+  .stage-shot, .stage-menubar { translate: -50% -50%; scale: none; }
 }

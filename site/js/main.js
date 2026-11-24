@@ -1,6 +1,7 @@
 import { loadAvatar, STATES } from "./avatar.js";
 import { SHELLS } from "./device.js";
 import { SCREEN, WAKE_AT, WAKE_FROM, WAKE_MS, fitSleepyEyes, introDist, introLift, introScreenBottom, measureSlits, narrow, showTitle } from "./intro.js";
+import { menubarScene } from "./menubar.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -178,6 +179,8 @@ async function main() {
     shot.dataset.theme = tab.dataset.theme;
     tabs.forEach((t) => t.setAttribute("aria-selected", t === tab));
   }));
+  // Menu bar chapter: the fake menu bar's icon acts out key states.
+  const menubar = menubarScene($(".stage-menubar"));
 
   // --- Chapters ------------------------------------------------------------
   // Timers belong to the current chapter and are cleared when it changes.
@@ -326,6 +329,11 @@ async function main() {
       pose: { az: 16, el: 10, dist: 180, tx: 0, ty: 0, exposure: 1.05, reveal: 1 },
       enter() { calm({ active: 2, done: 1 }); },
     },
+    menubar: {
+      // The stick stays offstage; the fake menu bar acts out key states.
+      pose: { az: 16, el: 10, dist: 180, tx: 0, ty: 0, exposure: 1.05, reveal: 1 },
+      enter() { calm({ active: 2, done: 1 }); menubar.play({ later, every, reduceMotion }); },
+    },
   };
 
   const sections = $$("[data-chapter]");
@@ -456,8 +464,8 @@ async function main() {
   const OUT_WIDE = [0.04, 0.3]; // the wider opening copy clears out sooner
   const IN = 0.34, STAGGER = 0.045, FADE = 0.25; // new copy rises in after the stick has left
   const LIFT = 30; // px of copy travel, like Apple's short text moves
-  // The opening is its own scene; the playground and the closing Herdr
-  // chapter (.chapter-flow) keep flowing into the rest of the page, entering once like Apple's
+  // The opening is its own scene; the playground and the closing Herdr and
+  // menu bar chapters (.chapter-flow) keep flowing into the rest of the page, entering once like Apple's
   // StaggeredFadeIn (.entered in styles.css).
   const ENTER = 0.72;
   document.documentElement.classList.add("js-chapters");
@@ -495,6 +503,7 @@ async function main() {
   }
   const playground = $("#play");
   const herdrAt = names.indexOf("herdr");
+  const menubarAt = names.indexOf("menubar");
   function onScroll() {
     const mid = scrollY + innerHeight / 2;
     // Only hand over the camera once the visitor is in the playground, not
@@ -528,7 +537,12 @@ async function main() {
     stage.style.setProperty("--stick", stick.toFixed(3));
     stage.style.setProperty("--herdr", herdr.toFixed(3));
     stage.classList.toggle("herdr-handoff", flight > 0);
-    stage.classList.toggle("herdr", herdr > 0.001);
+    // On to the menu bar in place: the screenshot and the fake menu bar share
+    // a frame, so one crossfades into the other where it stands.
+    const swap = inOutQuad(span(i + t - (menubarAt - 1), 0.25, 0.7));
+    stage.style.setProperty("--swap", swap.toFixed(3));
+    stage.classList.toggle("herdr", herdr > 0.001 && swap < 0.999);
+    stage.classList.toggle("menubar", swap > 0.001);
     // Pinned chapters crossfade on the timeline; the opening and the
     // playground flow, fading by distance from their chapter.
     sections.forEach((s, n) => {
