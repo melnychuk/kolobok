@@ -38,6 +38,18 @@ Agents when the physical Stick is plugged in. See [installing the Herdr
 widget](docs/herdr-widget.md). This is a desktop mod,
 not an extension for the terminal-only `herdr` client.
 
+## macOS Copilot menu bar (optional)
+
+Show the Copilot mascot and session status in the macOS menu bar, with or
+without a Stick. To try the states without launching any agents:
+
+```sh
+swift run --package-path menu-bar CopilotMenuBar --demo
+```
+
+Click the mascot and use **Preview state**. Omit `--demo` for live Copilot CLI
+sessions in Herdr Desktop. See [the menu-bar guide](docs/copilot-menu-bar.md).
+
 ## Install the physical Stick
 
 Easiest: paste this into your coding agent (Copilot CLI, Pi, …). The
