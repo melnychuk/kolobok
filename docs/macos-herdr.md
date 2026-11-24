@@ -83,10 +83,62 @@ The hardware screen shows aggregate counts/avatar cues, not session titles or a
 mirror of the terminal. A hold can still make the existing firmware show its
 listening animation, but this Mac host does not transcribe it.
 
+## Herdr Desktop
+
+With `--herdr-source desktop`, the bridge reads Herdr Desktop instead of a
+terminal session in Ghostty:
+
+```sh
+python3 bridge/macos_herdr_bridge.py --herdr-source desktop --port /dev/cu.usbmodem<port>
+```
+
+It counts every agent Desktop runs, whatever the kind, from `herdr-app ls` and
+`herdr-app status` (structured layout, never terminal output). Herdr owns seen
+state: an agent shows as done exactly while Herdr marks its completion unread,
+including badges from before the bridge started. It finds `herdr-app` on `PATH`,
+then in Herdr.app under `~/Applications` or `/Applications`; pass an absolute
+`--herdr-app` otherwise. A short A click opens the newest unread completion,
+then blocked and working agents, as above: the bridge checks the target against
+a fresh snapshot, runs Herdr's `agent.focus` and brings Herdr forward with
+`open -b` only if it's already running. It never launches Herdr.
+
+Add `--no-usb` to run without a Stick, for example only for
+[BAA](baa.md). An ambiguous USB port no longer stops the bridge: it keeps
+publishing status and reports the ambiguity once. Losing the Stick keeps the
+bridge's task state, so nothing it shows elsewhere resets.
+
+### Status socket
+
+The bridge publishes the counts it sends the Stick, plus each agent's kind, name
+and status (and, from Herdr Desktop, its space, tab and pane name, in Herdr's
+order), on a Unix socket for local apps such as BAA:
+`$(getconf DARWIN_USER_TEMP_DIR)stick-s3/bridge.sock`. Binding creates that one
+socket file at startup; every update stays in memory, so there are no per-poll
+status files. The directory is `0700` and the socket `0600`, so only your user
+can connect, and names never reach the logs. A leftover socket is replaced only
+if nobody is listening on it. Apps may ask the bridge to focus an agent; one
+focus runs at a time, shared with the Stick's button. Use `--status-socket PATH`
+to move it or `--no-status-socket` to turn it off.
+
+### Moving an existing LaunchAgent to Desktop
+
+The installer doesn't offer the Desktop source yet. Edit
+`~/Library/LaunchAgents/io.github.melnychuk.stick-s3.plist`: in
+`ProgramArguments`, replace `--session` and its value with `--herdr-source` and
+`desktop` (drop `--herdr` and `--ghostty-terminal` if present; keep `--port`, or
+use `--no-usb`). Check it first with the same arguments plus `--once`, then reload:
+
+```sh
+launchctl bootout gui/$(id -u)/io.github.melnychuk.stick-s3
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.github.melnychuk.stick-s3.plist
+```
+
 ## Validation
 
 ```sh
 python3 -m unittest discover -s tests -p test_macos_herdr_bridge.py
+python3 -m unittest discover -s tests -p test_macos_herdr_desktop.py
+python3 -m unittest discover -s tests -p test_status_socket.py
 python3 -m unittest discover -s tests -p test_herdr_bridge.py
 python3 -m unittest discover -s tests -p test_voice.py
 ```
