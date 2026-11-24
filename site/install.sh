@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copilot Stick S3 installer: the Herdr bridge for Linux or macOS, optional
+# Agent Herdr installer: the Herdr bridge for Linux or macOS, optional
 # local dictation (Linux) and optional firmware flashing.
 #
 #   curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash
@@ -25,7 +25,7 @@ ASR_REVISION="f13b0c6a48186fdd9fdd8d203b9527b0b709b09f"
 
 usage() {
   cat <<'EOF'
-Install the Copilot Stick S3 bridge (and optionally flash the firmware).
+Install the Agent Herdr bridge (and optionally flash the StickS3 firmware).
 
 Usage: install.sh [options]
 
@@ -82,7 +82,7 @@ fetch_source() {
   elif [[ -e $APP ]]; then
     die "$APP exists but is not a git checkout; move it or set STICK_S3_DIR."
   else
-    say "Downloading Copilot Stick S3 to $APP"
+    say "Downloading Agent Herdr to $APP"
     mkdir -p "$(dirname "$APP")"
     git clone --quiet --depth 1 "$REPO_URL" "$APP"
   fi
@@ -216,7 +216,7 @@ install_linux() {
   [[ -f $unit ]] && cp "$unit" "$unit.bak.$(date +%s)"
   for part in "${exec[@]}"; do line+="$(unit_quote "$part") "; done
   {
-    printf '[Unit]\nDescription=Copilot Stick S3 Herdr USB bridge\n\n[Service]\nType=simple\n'
+    printf '[Unit]\nDescription=Agent Herdr USB bridge\n\n[Service]\nType=simple\n'
     [[ -n $HELPER ]] && printf 'Environment=%s\n' "$(unit_quote "STICK_S3_HERDR_HELPER=$HELPER")"
     [[ -n $PLUGIN ]] && printf 'Environment=%s\n' "$(unit_quote "STICK_S3_AGENTS_PLUGIN=$PLUGIN")"
     printf 'ExecStart=%s\nRestart=on-failure\nRestartSec=3\nNoNewPrivileges=true\n\n' "${line% }"
@@ -356,7 +356,7 @@ PY
   then :; else die "Firmware download or verification failed."; fi
   mapfile -t parts < "$dir/parts"
   [[ ${#parts[@]} -ge 2 ]] || die "The firmware manifest lists no files."
-  confirm "Flash the Copilot Stick S3 firmware to $PORT? This replaces what is on it." \
+  confirm "Flash the Agent Herdr firmware to $PORT? This replaces what is on it." \
     || die "Cancelled; nothing was flashed."
   bridge_pause
   trap bridge_resume EXIT

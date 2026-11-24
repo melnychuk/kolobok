@@ -1,9 +1,10 @@
-# Install Copilot Stick S3 — instructions for a coding agent
+# Install Agent Herdr — instructions for a coding agent
 
-You are helping a person set up **Copilot Stick S3**: an M5Stack StickS3 that
-shows what their Herdr / GitHub Copilot CLI agents are doing (blue = working,
-green = finished, yellow = needs you), opens the next task on a key press and,
-on Linux, takes push-to-talk dictation with local CPU speech recognition.
+You are helping a person set up **Agent Herdr** on an M5Stack StickS3. It reads
+status from Herdr, so there’s no requirement to use a specific coding agent or
+model provider. The Stick shows when agents are working (blue), finished (green),
+or need you (yellow), opens the next task on a key press and, on Linux, takes
+push-to-talk dictation with local CPU speech recognition.
 
 The heavy lifting is done by a tested installer script. Your job is to check
 the machine, explain the choices, get the person's consent where needed, run

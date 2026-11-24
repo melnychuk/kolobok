@@ -405,10 +405,11 @@ export class Device {
     g.fill();
     g.fillStyle = "#111";
     g.font = `800 40px "Bricolage Grotesque", system-ui, sans-serif`;
-    g.fillText("Copilot Stick S3", 560, 360);
+    g.fillText("Agent Herdr", 560, 360);
     g.fillStyle = "#666";
     g.font = `500 28px "JetBrains Mono", monospace`;
-    g.fillText("a tiny face for your agents", 560, 410);
+    g.fillText("One glance and you’ll know", 560, 410);
+    g.fillText("what they're up to", 560, 446);
     // M5 STACK block + KEY1 note, near the USB end like the real label.
     g.fillStyle = "#2b7de0";
     g.font = `800 120px "Bricolage Grotesque", system-ui, sans-serif`;
