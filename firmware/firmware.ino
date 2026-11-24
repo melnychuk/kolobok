@@ -9,6 +9,7 @@
 #include "power_nap.h"
 #include "frame_profile.h"
 #include "framebuffer_raster.h"
+#include "native_scan.h"
 #include "sound_startle.h"
 
 #ifndef STICK_S3_PROFILE
@@ -70,6 +71,14 @@ float flatTurnDegrees = 0;
 M5Canvas canvases[2] = {M5Canvas(&M5.Display), M5Canvas(&M5.Display)};
 M5Canvas* frameCanvas = &canvases[0];
 bool doubleBuffered = false;
+// Preferred instead: render landscape into canvases[0], then copy it into
+// this portrait buffer in the panel's own scan order (native_scan.h) and send
+// that by DMA while the next frame renders. The panel stays at rotation 0;
+// `rotation` only picks the copy's direction. Same memory as two landscape
+// frames, and a mid-refresh frame splits along one straight line instead of
+// shearing diagonally through every moving edge.
+M5Canvas scanout(&M5.Display);
+bool nativeScan = false;
 bool transferOpen = false;
 M5Canvas& frame() { return *frameCanvas; }
 #if STICK_S3_AMBIENT_STARTLE
@@ -328,9 +337,17 @@ void finishTransfer() {
 // Queue the finished frame and, when double buffered, return while DMA sends
 // it; the next frame renders into the other buffer. A frame buffer is never
 // written while DMA reads it: the previous transfer completes before its
-// buffer comes back around.
+// buffer comes back around. Native scan refills `scanout` only after that.
 void presentFrame() {
   finishTransfer();
+  if (nativeScan) {
+    native_scan::transpose(static_cast<const uint16_t*>(frame().getBuffer()), kScreenWidth, kScreenHeight,
+                           static_cast<uint16_t*>(scanout.getBuffer()), rotation);
+    M5.Display.startWrite();
+    transferOpen = true;
+    scanout.pushSprite(0, 0);
+    return;
+  }
   M5.Display.startWrite();
   transferOpen = true;
   frame().pushSprite(0, 0);
@@ -452,8 +469,11 @@ void updateOrientation() {
   }
   if (nextRotation != rotation) {
     rotation = nextRotation;
-    finishTransfer();  // Never change MADCTL while a frame is in flight.
-    M5.Display.setRotation(rotation);
+    // Native scan keeps the panel at rotation 0; the next copy turns instead.
+    if (!nativeScan) {
+      finishTransfer();  // Never change MADCTL while a frame is in flight.
+      M5.Display.setRotation(rotation);
+    }
   }
 }
 
@@ -575,8 +595,20 @@ void setup() {
   }
   // Overlap needs both frames in internal DMA-capable RAM (setPsram(false)
   // allocates only there); otherwise keep the synchronous single buffer.
-  doubleBuffered = !firstInPsram && canvases[1].createSprite(kScreenWidth, kScreenHeight) != nullptr;
-  if (!doubleBuffered) canvases[1].deleteSprite();
+  scanout.setColorDepth(16);
+  scanout.setPsram(false);
+  nativeScan = !firstInPsram && canvases[0].getBuffer() != nullptr &&
+               canvases[0].getRotation() == 0 &&
+               canvases[0].bufferLength() >= kScreenWidth * kScreenHeight * 2 &&
+               scanout.createSprite(kScreenHeight, kScreenWidth) != nullptr &&
+               scanout.bufferLength() >= kScreenWidth * kScreenHeight * 2;
+  if (nativeScan) {
+    M5.Display.setRotation(0);
+  } else {
+    scanout.deleteSprite();
+    doubleBuffered = !firstInPsram && canvases[1].createSprite(kScreenWidth, kScreenHeight) != nullptr;
+    if (!doubleBuffered) canvases[1].deleteSprite();
+  }
   nextFrameAt = millis();
   renderFrame(millis());
 }

@@ -532,3 +532,42 @@ Static RAM grows by 16 KB (the table). The device's frames are unchanged
 (`tests/test_device_frames.py`), and so are the site's: old and new
 `avatar.wasm` give identical bytes over 3,000-frame traces for the site, the
 dark widget and light mode.
+
+## Native-scan presentation — measured 2026-11-24
+
+The completion transfer's re-entry moved the black body up to ~44px per frame
+across the full-screen green wash, and the edge visibly tore. Rendering had
+not slowed down (host stage times are flat across the November commits); the
+tear is the panel's. The ST7789 refreshes its 135×240 glass along the portrait
+rows, one landscape *column* at a time, while landscape MADCTL (rotation 1/3,
+MV=1) fills GRAM one landscape *row* at a time. Without a TE pin a frame often
+lands mid-refresh, and with the write running across the refresh the boundary
+between old and new frame is a slant through every moving edge ("diagonal
+tearing", as fbcp-ili9341 documents it). The side swap (active left) reversed
+the re-entry relative to the scan, which likely made the same shear read worse.
+
+`firmware/native_scan.h` copies the rendered landscape frame into a portrait
+buffer in the panel's own order, exactly where M5GFX's rotation 1 or 3 puts
+each pixel (`tests/test_native_scan.cpp` checks every pixel against
+LovyanGFX's `_rotate_pos`). The panel stays at rotation 0 and the IMU's flips
+only change the copy's direction. A mid-refresh frame now splits along one
+straight scan line. Memory is unchanged: one landscape render buffer plus the
+portrait scanout buffer replace the two landscape buffers, which fall back as
+before if the scanout buffer can't be allocated. `tests/test_device_frames.py`
+reads the portrait frames back into landscape and keeps its hash.
+
+Same scripted workload (`scripts/frame-profile-workload.py`: arrival,
+transfer, done-only rest, paired, idle, every 24s), 72s O2 captures, 2,031
+frames each with complete footers and no losses:
+
+| | Landscape push `c5d6a25e` | Native scan `6373ce89` |
+|---|---:|---:|
+| Render-side median / p95 | 11.42 / 16.68ms | 11.26 / 16.43ms |
+| Flush median / p95 | 6.55 / 6.55ms | 7.10 / 7.11ms |
+| Cadence | 30.3fps | 30.3fps |
+
+The copy costs ~0.55ms. The flush exposes something else: it was a constant
+6.55ms in both builds, which is 32,768 bytes at 40MHz. On the ESP32-S3 one SPI
+transaction carries at most 32KB, so M5GFX's `Bus_SPI::writeBytes` busy-waits
+through the first half of a 64,800-byte frame before queuing the second. The
+"overlapped" DMA only ever hid the second half of the transfer.

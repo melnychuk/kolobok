@@ -22,6 +22,7 @@ uint64_t total = 1469598103934665603ull;
 uint32_t dumpAt = 0;
 bool dumping = false, dumped = false;
 uint32_t frames = 0;
+uint32_t landscapeFrames = 0;
 #if STICK_S3_PROFILE
 uint64_t stages[frame_profile::badges + 1] = {};
 #endif
@@ -32,8 +33,24 @@ uint64_t fnv(uint64_t hash, const void* data, size_t length) {
   return hash;
 }
 
-void present(const uint16_t* pixels, int width, int height) {
+void present(const uint16_t* native, int width, int height) {
   ++frames;
+  // Native-scan presentation sends the panel's portrait order (rotation 0).
+  // Read it back as the landscape screen the viewer sees, placing each pixel
+  // as M5GFX's rotation 1/3 does (LovyanGFX Panel_HasBuffer::_rotate_pos).
+  static uint16_t landscape[kScreenWidth * kScreenHeight];
+  const uint16_t* pixels = native;
+  if (width == kScreenHeight && height == kScreenWidth) {
+    for (int y = 0; y < kScreenHeight; ++y)
+      for (int x = 0; x < kScreenWidth; ++x)
+        landscape[y * kScreenWidth + x] = rotation == 1 ? native[x * kScreenHeight + (kScreenHeight - 1 - y)]
+                                                        : native[(kScreenWidth - 1 - x) * kScreenHeight + y];
+    pixels = landscape;
+    width = kScreenWidth;
+    height = kScreenHeight;
+  } else {
+    ++landscapeFrames;  // The fallback path: the Stick should never take it here.
+  }
   if (dumping) {
     if (dumped || millis() < dumpAt) return;
     dumped = true;
@@ -127,5 +144,9 @@ int main(int argc, char** argv) {
   for (int metric = frame_profile::update; metric <= frame_profile::badges; ++metric)
     fprintf(stderr, "%-10s %8.2f us/frame\n", names[metric], stages[metric] / 1000.0 / frames);
 #endif
+  if (!nativeScan || landscapeFrames) {
+    fprintf(stderr, "native-scan presentation not used (%u landscape frames)\n", landscapeFrames);
+    return 2;
+  }
   return dumping && !dumped ? 1 : 0;
 }
