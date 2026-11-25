@@ -653,9 +653,6 @@ inline float renderedEyeHeight(const Scene& scene) {
 // Cartoon blink: the closing lid sinks toward the eye's lower edge and the
 // closed line widens a little. Pose-independent constants; plain blinks only.
 constexpr float kBlinkSink=.22f,kBlinkWiden=.06f;
-// Smiling squint and tapered happy crease (eye_raster::Style); the legacy
-// crescent/arch remains the raster default for the frozen parity oracles.
-constexpr eye_raster::Style kEyeStyle=eye_raster::Style::natural;
 // Sideways looks turn the face a touch: the eye on the gaze side recedes and
 // the other comes nearer, so it renders slightly larger. Derived from the
 // final composed gaze (clips, checks, cues and life alike) at render time;
@@ -703,7 +700,7 @@ void eyes(const Scene& scene,const Mask& mask,Pixel pixel) {
                     scene.wave>0?waveClosing(scene):viewed(scene.eyes),[&](int x,int y,float alpha) {
   const float coverage=mask.baseCoverage(x,y);
   if(coverage>0)pixel(x,y,alpha*coverage);
- },kBlinkSink,kBlinkWiden,kEyeStyle);
+ },kBlinkSink,kBlinkWiden);
 }
 // Span variant: interior eye runs fully inside the face arrive as fill(x,y,n);
 // everything else, including runs crossing the face edge, stays per-pixel and
@@ -726,7 +723,7 @@ void eyes(const Scene& scene,const Mask& mask,Pixel pixel,Fill fill) {
    edge(i,y,1);
   }
   if(run>=0)fill(run,y,x+length-run);
- },kBlinkSink,kBlinkWiden,kEyeStyle);
+ },kBlinkSink,kBlinkWiden);
 }
 template<class Pixel>
 void eyes(const Scene& scene,Pixel pixel) {

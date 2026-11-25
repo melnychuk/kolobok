@@ -770,9 +770,12 @@ Physical appearance, cadence and DMA behaviour unverified.
 ## Natural happy eyes, per-eye acting and gaze perspective
 
 The closed happy `^ ^` arches, the deep crescent smile and the flat wink read
-as emoji. The scene now draws `eye_raster::Style::natural`
-(`avatar_scene::kEyeStyle`); `Style::legacy` stays the raster default so the
-frozen parity oracles keep checking the old kernel exactly.
+as emoji. These are now the only happy shapes: the old crescent/arch was first
+kept behind a style switch, then removed once the new shapes were approved on
+the Stick. The reference kernels (`tests/reference_eye_raster.h`,
+`tests/reference_round4_eye_raster.h`) implement the same shapes in plain,
+unoptimised form, so the parity tests still check every optimisation (spans,
+column cache, tight bounds) exactly.
 
 - **Smiles** cut a shallower cheek (`.56h`/`.20h` instead of `.78h`/`.32h`),
   relax the upper lid by `smile*.10`, and round the cheek/eye corners with a
@@ -781,7 +784,7 @@ frozen parity oracles keep checking the old kernel exactly.
 - **Happy closures** are a tapered crease seated lower in the eye (centre
   `+.05h`, corners `+.13h`, half-thickness `.55+.045h*(1-nx^2)`): thick in the
   middle, fine at the corners, instead of a uniform 4px stroked arch. Plain
-  blinks, lids and non-smiling closures are pixel-identical to legacy.
+  blinks, lids and non-smiling closures are unchanged.
 - **Gaze perspective** (`avatar_scene::viewed`): at render time the eye on
   the gaze side shrinks and the far eye grows by `0.3%` per px of gaze x,
   capped at `±4.5%`. It applies to every composed pose (clips, checks, cues,
@@ -799,13 +802,13 @@ frozen parity oracles keep checking the old kernel exactly.
   the double-take side looks before the wide pop, a quizzical one-big/one-
   lidded question tilt, and pleading outer-corner droop (slant -.32/-.38).
 
-Guards: `test_eye_shapes` (both styles: scalar/span parity, legacy identity
-for non-happy poses, crease taper/curve/seat), `test_eye_pass` (natural
-spans), `test_avatar` (completion has no slant; bounded per-eye fields;
+Guards: `test_eye_shapes` (scalar/span parity with per-eye shaping, smile
+keeps most of the eye, crease taper/curve/seat), `test_eye_pass` and
+`test_raster_fast` (exact parity with the reference kernels), `test_avatar` (completion has no slant; bounded per-eye fields;
 perspective sign/cap/neutrality; wink scrunch), and `test_eye_life`, whose
 workload now renders exactly as the scene does (vertical mean 4227 vs 4252
-baseline; max unchanged). Frozen-oracle tests compare clip poses on the
-fields those kernels model. Flashed with hashes verified; physical
+baseline; max unchanged). The reference kernels do not model per-eye
+scale/lower lids/slant, so oracle tests compare clip poses without them. Flashed with hashes verified; physical
 appearance and timing not yet reviewed.
 
 ## Visual development and independent critique

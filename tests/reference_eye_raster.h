@@ -2,6 +2,8 @@
 #include <math.h>
 #include "../firmware/eye_acting.h"
 // Frozen pre-optimization geometry oracle. No hardware or timing claims.
+// Shapes follow the current happy eyes (shallow rounded cheek, relaxed lid,
+// tapered crease); per-eye scale/lower lids/slant are not modelled.
 
 namespace reference_eye_raster {
 inline float clamp(float v,float lo,float hi) { return fmaxf(lo,fminf(hi,v)); }
@@ -18,7 +20,7 @@ void render(float cx,float cy,float width,float height,float gap,
  const float angle=pose.tilt*.01745329252f,c=cosf(angle),s=sinf(angle);
  for(int side=0;side<2;++side) {
   const float closure=clamp(side?pose.closeR:pose.closeL,0,1);
-  const float upper=(side?pose.upperR:pose.upperL)*(1-closure);
+  const float upper=((side?pose.upperR:pose.upperL)+clamp(pose.smile,0,1)*.10f)*(1-closure);
   const float smile=pose.smile*(1-closure);
   const float w=width,h=fmaxf(3,height*(1-closure));
   const float offset=(side?1:-1)*(width+gap)/2;
@@ -37,14 +39,21 @@ void render(float cx,float cy,float width,float height,float gap,
      distance=fmaxf(distance,lid-py);
     }
     if(smile>0) {
-     const float cheek=h/2-smile*h*.78f+smile*h*.32f*nx*nx;
-     distance=fmaxf(distance,py-cheek);
+     const float cheek=py-(h/2-smile*h*.56f+smile*h*.20f*nx*nx);
+     // Rounded cheek corners: polynomial smooth max of width cheekSoft.
+     const float cheekSoft=fminf(5.0f,smile*12),gapD=fabsf(cheek-distance);
+     if(gapD<cheekSoft) {
+      const float k=(cheekSoft-gapD)/cheekSoft;
+      distance=(cheek>distance?cheek:distance)+cheekSoft*.25f*k*k;
+     } else if(cheek>distance)distance=cheek;
     }
-    // Closed happy eyes stay curved (a 4px arch), not a sleepy flat pill.
+    // Closed happy eyes: a tapered crease seated a little low in the eye.
     const float happyClosed=clamp((closure-.35f)/.65f,0,1)*clamp(pose.smile*2,0,1);
     if(happyClosed>0) {
-     const float arcY=height*(.12f*nx*nx-.06f);
-     const float arcDistance=fmaxf(fabsf(py-arcY)-2,fabsf(px)-w/2+2);
+     const float bend=1-nx*nx;
+     const float arcY=height*(.13f-.08f*bend);
+     const float a=fabsf(py-arcY)-(.55f+height*.045f*bend),b=fabsf(px)-w/2+1.5f;
+     const float arcDistance=fmaxf(a,b);
      distance=distance+(arcDistance-distance)*happyClosed;
     }
     const float alpha=clamp(.5f-distance,0,1);

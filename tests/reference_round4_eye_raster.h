@@ -3,6 +3,8 @@
 #include "../firmware/eye_acting.h"
 
 // Frozen round-3/cache-pass kernel. Do not optimize this parity oracle.
+// Shapes follow the current happy eyes (shallow rounded cheek, relaxed lid,
+// tapered crease); per-eye scale/lower lids/slant are not modelled.
 namespace reference_round4_eye_raster {
 // All bounds/geometry supplied by acting are finite. Avoid per-pixel libm
 // calls on Xtensa; a NaN value still selects hi as the original clamp did.
@@ -23,7 +25,7 @@ void render(float cx,float cy,float width,float height,float gap,
  const float angle=pose.tilt*.01745329252f,c=cosf(angle),s=sinf(angle);
  for(int side=0;side<2;++side) {
   const float closure=clamp(side?pose.closeR:pose.closeL,0,1);
-  const float upper=(side?pose.upperR:pose.upperL)*(1-closure);
+  const float upper=((side?pose.upperR:pose.upperL)+clamp(pose.smile,0,1)*.10f)*(1-closure);
   const float smile=pose.smile*(1-closure);
   const float w=width,h=fmaxf(3,height*(1-closure));
   const float offset=(side?1:-1)*(width+gap)/2;
@@ -35,7 +37,7 @@ void render(float cx,float cy,float width,float height,float gap,
   // Max(lid/cheek, box) never expands the box. A happy closure blends with
   // an arch, so include that arch's full height before rotating the union.
   const float halfW=w/2+.5f;
-  const float archH=height*.06f+2.5f;
+  const float archH=height*.18f+1.5f;
   const float halfH=happyClosed>0?fmaxf(h/2+.5f,archH):h/2+.5f;
   const float bx=fabsf(c)*halfW+fabsf(s)*halfH+1;
   const float by=fabsf(s)*halfW+fabsf(c)*halfH+1;
@@ -56,13 +58,19 @@ void render(float cx,float cy,float width,float height,float gap,
      if(lid-py>distance)distance=lid-py;
     }
     if(smile>0) {
-     const float cheek=h/2-smile*h*.78f+smile*h*.32f*nx*nx;
-     if(py-cheek>distance)distance=py-cheek;
+     const float cheek=py-(h/2-smile*h*.56f+smile*h*.20f*nx*nx);
+     // Rounded cheek corners: polynomial smooth max of width cheekSoft.
+     const float cheekSoft=fminf(5.0f,smile*12),gapD=fabsf(cheek-distance);
+     if(gapD<cheekSoft) {
+      const float k=(cheekSoft-gapD)/cheekSoft;
+      distance=(cheek>distance?cheek:distance)+cheekSoft*.25f*k*k;
+     } else if(cheek>distance)distance=cheek;
     }
-    // Closed happy eyes stay curved (a 4px arch), not a sleepy flat pill.
+    // Closed happy eyes: a tapered crease seated a little low in the eye.
     if(happyClosed>0) {
-     const float arcY=height*(.12f*nx*nx-.06f);
-     const float a=fabsf(py-arcY)-2,b=fabsf(px)-w/2+2;
+     const float bend=1-nx*nx;
+     const float arcY=height*(.13f-.08f*bend);
+     const float a=fabsf(py-arcY)-(.55f+height*.045f*bend),b=fabsf(px)-w/2+1.5f;
      const float arcDistance=a>b?a:b;
      distance=distance+(arcDistance-distance)*happyClosed;
     }

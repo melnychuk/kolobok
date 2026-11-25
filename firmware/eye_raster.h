@@ -20,14 +20,10 @@ inline float roundedDistance(float x,float y,float halfW,float halfH,float radiu
 // (`blinkSink` of the lost height) and widens it slightly (`blinkWiden` at
 // full closure). Happy arches keep their place. Zero is the exact old path.
 struct NoSpans { void operator()(int,int,int) const {} };
-// Happy-eye drawing style. `legacy` is the frozen kernel (deep crescent cheek,
-// uniform 4px floating arch) that the parity oracles reproduce. `natural`
-// is what the scene draws: a shallower cheek lift with a slightly relaxed
-// upper lid (a smiling squint, not an emoji crescent), and happy closures
-// that become a soft tapered lid crease seated lower in the eye, thick in the
-// middle and fine at the corners, instead of a stroked ^ icon. Plain blinks,
-// lids, winks of a non-smiling face and all non-happy shapes are unchanged.
-enum class Style : uint8_t { legacy, natural };
+// Happy eyes: a smile lifts a shallow cheek with rounded corners and relaxes
+// the upper lid a little (a smiling squint, not an emoji crescent); a happy
+// closure becomes a soft tapered lid crease seated low in the eye, thick in
+// the middle and fine at the corners, not a stroked ^ icon.
 // Conservative distance margin for interior spans: analytically every claimed
 // pixel has distance <= -.5-margin, so the float evaluation (error ~1e-5px) is
 // guaranteed to give alpha exactly 1. Pixels outside the span keep the exact
@@ -116,31 +112,28 @@ inline bool rotatedSpan(float dy,float c,float s,float w,float h,float radius,in
 template<class Pixel,class Span>
 void renderSpans(float cx,float cy,float width,float height,float gap,
                  const eye_acting::Pose& pose,Pixel pixel,Span span,bool spans,
-                 float blinkSink,float blinkWiden,Style style);
+                 float blinkSink,float blinkWiden);
 template<class Pixel>
 void render(float cx,float cy,float width,float height,float gap,
-            const eye_acting::Pose& pose,Pixel pixel,float blinkSink=0,float blinkWiden=0,
-            Style style=Style::legacy) {
- renderSpans(cx,cy,width,height,gap,pose,pixel,NoSpans(),false,blinkSink,blinkWiden,style);
+            const eye_acting::Pose& pose,Pixel pixel,float blinkSink=0,float blinkWiden=0) {
+ renderSpans(cx,cy,width,height,gap,pose,pixel,NoSpans(),false,blinkSink,blinkWiden);
 }
 // Interior runs (alpha exactly 1) are reported as span(x,y,length) instead of
 // per-pixel callbacks, at their position in the row order. Unrotated eyes only.
 template<class Pixel,class Span>
 void render(float cx,float cy,float width,float height,float gap,
-            const eye_acting::Pose& pose,Pixel pixel,Span span,float blinkSink,float blinkWiden,
-            Style style=Style::legacy) {
- renderSpans(cx,cy,width,height,gap,pose,pixel,span,true,blinkSink,blinkWiden,style);
+            const eye_acting::Pose& pose,Pixel pixel,Span span,float blinkSink,float blinkWiden) {
+ renderSpans(cx,cy,width,height,gap,pose,pixel,span,true,blinkSink,blinkWiden);
 }
 template<class Pixel,class Span>
 void renderSpans(float cx,float cy,float width,float height,float gap,
                  const eye_acting::Pose& pose,Pixel pixel,Span span,bool spans,
-                 float blinkSink,float blinkWiden,Style style) {
- const bool natural=style==Style::natural;
+                 float blinkSink,float blinkWiden) {
  const float angle=pose.tilt*.01745329252f,c=cosf(angle),s=sinf(angle);
  for(int side=0;side<2;++side) {
   const float closure=clamp(side?pose.closeR:pose.closeL,0,1);
-  // A natural smile relaxes the upper lid a little as the cheek rises.
-  const float smileLid=natural?clamp(pose.smile,0,1)*.10f:0;
+  // A smile relaxes the upper lid a little as the cheek rises.
+  const float smileLid=clamp(pose.smile,0,1)*.10f;
   const float upper=((side?pose.upperR:pose.upperL)+smileLid)*(1-closure);
   const float lower=clamp(side?pose.lowerR:pose.lowerL,0,1)*(1-closure);
   const float slant=clamp(side?pose.slantR:pose.slantL,-.5f,.5f)*(1-closure);
@@ -162,9 +155,9 @@ void renderSpans(float cx,float cy,float width,float height,float gap,
   // Max(lid/cheek, box) never expands the box. A happy closure blends with
   // an arch, so include that arch's full height before rotating the union.
   const float halfW=w/2+.5f;
-  // Lowest point of the arch plus its thickest half-width (natural crease:
-  // centre +.05h, corners +.13h, half-thickness up to .55+.045h).
-  const float archH=natural?eyeHeight*.18f+1.5f:eyeHeight*.06f+2.5f;
+  // Lowest point of the crease plus its half-width and antialiasing
+  // (centre +.05h, corners +.13h, half-thickness up to .55+.045h).
+  const float archH=eyeHeight*.18f+1.5f;
   const float halfH=happyClosed>0?fmaxf(h/2+.5f,archH+sink):h/2+.5f;
   const float bx=fabsf(c)*halfW+fabsf(s)*halfH+1;
   const float by=fabsf(s)*halfW+fabsf(c)*halfH+1;
@@ -180,9 +173,9 @@ void renderSpans(float cx,float cy,float width,float height,float gap,
   float lidSlope=asymmetry*upper*h*.12f;
   if(slant!=0)lidSlope+=slant*h*.30f;
   const float lidCurve=upper*h*.07f;
-  const float cheekBase=h/2-smile*h*(natural?.56f:.78f),cheekCurve=smile*h*(natural?.20f:.32f);
-  // Rounding width of the natural cheek corners; spans tighten by its bound.
-  const float cheekSoft=natural&&smile>0?fminf(5.0f,smile*12):0;
+  const float cheekBase=h/2-smile*h*.56f,cheekCurve=smile*h*.20f;
+  // Rounding width of the cheek corners; spans tighten by its bound.
+  const float cheekSoft=smile>0?fminf(5.0f,smile*12):0;
   const float lowerBase=h/2-lower*h*.45f,lowerCurve=lower*h*.10f;
   // At EXACTLY zero rotation, normalized x is identical for every row.
   // Cache the original division (not a reciprocal) in bounded stack storage.
@@ -255,8 +248,8 @@ void renderSpans(float cx,float cy,float width,float height,float gap,
     float distance=roundedDistance(px,py,w/2,h/2,radius);
     if(hasUpper && lid>distance)distance=lid;
     if(smile>0) {
-     // Natural smiles round the cheek/eye corners (polynomial smooth max:
-     // never below the hard max, at most cheekSoft/4 above it).
+     // Round the cheek/eye corners (polynomial smooth max: never below the
+     // hard max, at most cheekSoft/4 above it).
      const float gapD=fabsf(cheek-distance);
      if(cheekSoft>0 && gapD<cheekSoft) {
       const float k=(cheekSoft-gapD)/cheekSoft;
@@ -264,21 +257,13 @@ void renderSpans(float cx,float cy,float width,float height,float gap,
      } else if(cheek>distance)distance=cheek;
     }
     if(lower>0 && lowerLid>distance)distance=lowerLid;
-    // Closed happy eyes stay curved, not a sleepy flat pill. Legacy: a
-    // uniform 4px arch. Natural: a tapered crease seated a little low, as
-    // if the cheek met the lid, fading to fine corners.
+    // Closed happy eyes stay curved, not a sleepy flat pill: a tapered
+    // crease seated a little low, as if the cheek met the lid.
     if(happyClosed>0) {
-     float arcDistance;
-     if(natural) {
-      const float bend=1-nx*nx;
-      const float arcY=eyeHeight*(.13f-.08f*bend)-sink;
-      const float a=fabsf(py-arcY)-(.55f+eyeHeight*.045f*bend),b=fabsf(px)-w/2+1.5f;
-      arcDistance=a>b?a:b;
-     } else {
-      const float arcY=eyeHeight*(.12f*nx*nx-.06f)-sink;
-      const float a=fabsf(py-arcY)-2,b=fabsf(px)-w/2+2;
-      arcDistance=a>b?a:b;
-     }
+     const float bend=1-nx*nx;
+     const float arcY=eyeHeight*(.13f-.08f*bend)-sink;
+     const float a=fabsf(py-arcY)-(.55f+eyeHeight*.045f*bend),b=fabsf(px)-w/2+1.5f;
+     const float arcDistance=a>b?a:b;
      distance=distance+(arcDistance-distance)*happyClosed;
     }
     const float alpha=clamp(.5f-distance,0,1);

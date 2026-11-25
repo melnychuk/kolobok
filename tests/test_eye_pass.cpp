@@ -50,15 +50,6 @@ void check(float cx,float cy,float width,float height,float gap,const eye_acting
                     [&](int x,int y,int n){for(int i=0;i<n;++i)shapedSpans.push_back({x+i,y,1});},
                     avatar_scene::kBlinkSink,avatar_scene::kBlinkWiden);
  assert(shaped==shapedSpans);comparisons+=shaped.size();
- // The production (natural) style: rounded cheek corners tighten interior
- // spans by the smooth-max bound, so spans must still reproduce per-pixel.
- std::vector<Pixel> natural,naturalSpans;
- eye_raster::render(cx,cy,width,height,gap,pose,[&](int x,int y,float a){natural.push_back({x,y,a});},
-                    avatar_scene::kBlinkSink,avatar_scene::kBlinkWiden,avatar_scene::kEyeStyle);
- eye_raster::render(cx,cy,width,height,gap,pose,[&](int x,int y,float a){naturalSpans.push_back({x,y,a});},
-                    [&](int x,int y,int n){for(int i=0;i<n;++i)naturalSpans.push_back({x+i,y,1});},
-                    avatar_scene::kBlinkSink,avatar_scene::kBlinkWiden,avatar_scene::kEyeStyle);
- assert(natural==naturalSpans);comparisons+=natural.size();
 }
 int main(int argc,char** argv) {
  avatar_scene::Scene scene;
