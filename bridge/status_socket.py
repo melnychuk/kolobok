@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish the bridge's status to local apps such as BAA over a Unix socket.
+"""Publish the bridge's status to local apps such as Kolobok over a Unix socket.
 
 Memory only: binding creates one socket inode in the per-user temp directory
 when the bridge starts; every update after that stays in the kernel, so there
@@ -184,7 +184,7 @@ class StatusServer:
     def _request(self, client, line):
         parsed = parse_request(line)
         if parsed is None:
-            self._drop(client)  # Not a BAA; don't keep talking to it.
+            self._drop(client)  # Unsupported client message; close the connection.
             return
         request_id, key = parsed
         if self.on_focus is None:

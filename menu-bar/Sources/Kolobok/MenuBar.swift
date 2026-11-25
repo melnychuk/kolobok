@@ -21,10 +21,10 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch Array(CommandLine.arguments.dropFirst()) {
         case [], ["--demo"]: break
         case ["--help"], ["-h"]:
-            print("Usage: BAA [--demo] (omit --demo to show the agents the Stick bridge reports)")
+            print("Usage: Kolobok [--demo] (omit --demo to show the agents the Stick bridge reports)")
             return
         default:
-            fputs("Usage: BAA [--demo]\n", stderr)
+            fputs("Usage: Kolobok [--demo]\n", stderr)
             exit(2)
         }
         let app = NSApplication.shared
@@ -64,7 +64,7 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let event = NSApp.currentEvent
         if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
             let menu = NSMenu()
-            menu.addItem(NSMenuItem(title: "Quit BAA", action: #selector(NSApplication.terminate(_:)),
+            menu.addItem(NSMenuItem(title: "Quit Kolobok", action: #selector(NSApplication.terminate(_:)),
                                     keyEquivalent: "q"))
             open(menu)
         } else {
@@ -123,7 +123,7 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateBlinkTimer(face: snapshot.face)
         drawAvatar(snapshot, on: button)
         let unread = snapshot.hasUnreadCompletion && snapshot.face != .done ? "; unread completion" : ""
-        let description = "BAA\(model.isDemo ? " preview" : ""): \(snapshot.label)\(unread)"
+        let description = "Kolobok\(model.isDemo ? " preview" : ""): \(snapshot.label)\(unread)"
         button.toolTip = description
         button.setAccessibilityLabel(description)
         if agentsMenuOpen { fillAgentsMenu() }  // Keep an open menu current.

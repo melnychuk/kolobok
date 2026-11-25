@@ -78,7 +78,7 @@ body::after {
 .stage.herdr-handoff .canvas-host canvas, .stage .now { opacity: var(--stick, 1); }
 /* Menu bar chapter: the fake macOS menu bar takes the screenshot's place and
    frame, crossfading in as it settles (--swap, scrubbed by js/main.js). One
-   menu bar point is --z CSS px, so BAA's 2× frames (js/menubar.js) land
+   menu bar point is --z CSS px, so Kolobok's 2× frames (js/menubar.js) land
    pixel for pixel. */
 .stage-menubar {
   --z: 2;
@@ -111,7 +111,7 @@ body::after {
   border-radius: calc(5px * var(--z)); transition: background-color .12s;
 }
 .mb-item.is-open { background: #ffffff38; }
-.mb-baa { display: block; width: auto; height: calc(18px * var(--z)); image-rendering: pixelated; }
+.mb-kolobok { display: block; width: auto; height: calc(18px * var(--z)); image-rendering: pixelated; }
 .mb-wifi { display: block; width: calc(17px * var(--z)); height: auto; }
 /* Today's macOS battery: a translucent body, the charge filled flush inside it, and a small cap. */
 .mb-battery {
@@ -130,7 +130,7 @@ body::after {
 }
 /* The open menu takes the right; the caption steps aside to the left. */
 .mb-screen.menu-open .mb-state { justify-items: start; padding-left: 9%; }
-/* BAA's agents menu as macOS draws it in dark mode: a native NSMenu with
+/* Kolobok's agents menu as macOS draws it in dark mode: a native NSMenu with
    section headers, one line per agent after a status dot. */
 .mb-menu {
   position: absolute; top: var(--bar); left: 0; margin-top: calc(1px * var(--z));
@@ -449,7 +449,7 @@ footer p { margin: 0; }
   .stage-shot img { border-radius: 10px; }
   .stage-menubar { left: 50%; top: 30%; width: min(92vw, 460px); }
   .mb-screen { border-radius: 10px; }
-  /* The bar keeps BAA's pixels 2×; the menu and extras make room for them. */
+  /* The bar keeps Kolobok's pixels 2×; the menu and extras make room for them. */
   .mb-battery { display: none; }
   .mb-menu { --z: 1.1; }
   .mb-pointer { --z: 1.5; }

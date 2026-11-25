@@ -103,7 +103,7 @@ a fresh snapshot, runs Herdr's `agent.focus` and brings Herdr forward with
 `open -b` only if it's already running. It never launches Herdr.
 
 Add `--no-usb` to run without a Stick, for example only for
-[BAA](baa.md). An ambiguous USB port no longer stops the bridge: it keeps
+[Kolobok](kolobok.md). An ambiguous USB port no longer stops the bridge: it keeps
 publishing status and reports the ambiguity once. Losing the Stick keeps the
 bridge's task state, so nothing it shows elsewhere resets.
 
@@ -111,7 +111,7 @@ bridge's task state, so nothing it shows elsewhere resets.
 
 The bridge publishes the counts it sends the Stick, plus each agent's kind, name
 and status (and, from Herdr Desktop, its space, tab and pane name, in Herdr's
-order), on a Unix socket for local apps such as BAA:
+order), on a Unix socket for local apps such as Kolobok:
 `$(getconf DARWIN_USER_TEMP_DIR)stick-s3/bridge.sock`. Binding creates that one
 socket file at startup; every update stays in memory, so there are no per-poll
 status files. The directory is `0700` and the socket `0600`, so only your user

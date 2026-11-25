@@ -100,7 +100,7 @@ final class BridgeClient: @unchecked Sendable {
         guard pipe(&wake) == 0 else { return }
         for end in wake { _ = fcntl(end, F_SETFL, O_NONBLOCK) }
         let thread = Thread { [self] in run() }
-        thread.name = "BAA bridge"
+        thread.name = "Kolobok bridge"
         thread.qualityOfService = .utility
         thread.start()
     }

@@ -1,15 +1,15 @@
-// BAA's menu bar avatar for Omarchy's bar: a JavaScript port of
-// menu-bar/Sources/BAA (Avatar.swift, Celebration.swift, and the frame
+// Kolobok's menu bar avatar for Omarchy's bar: a JavaScript port of
+// menu-bar/Sources/Kolobok (Avatar.swift, Celebration.swift, and the frame
 // choice in MenuBar.swift's StatusIcon), drawing the same pixels from the
-// same art (baa-art.mjs, exported from the Swift by scripts/export-baa-art.py).
-// It has no dependencies, so BaaIcon.qml and Node's tests both import it.
+// same art (kolobok-art.mjs, exported from the Swift by scripts/export-kolobok-art.py).
+// It has no dependencies, so KolobokIcon.qml and Node's tests both import it.
 //
 // Rendering returns straight-alpha RGBA bytes, ready for a Canvas's
 // putImageData: `base` (the sides with the face over them, in the bar's
 // foreground color where macOS would tint a template image), a separate
 // `star` layer for a completion's burst, and where to draw the side's label
 // with the bar's own font, between the two.
-import ART from "./baa-art.mjs";
+import ART from "./kolobok-art.mjs";
 
 const C = ART.celebration;
 export const colors = ART.colors;

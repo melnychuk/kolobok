@@ -292,7 +292,7 @@ def open_status_server(args):
     try:
         return StatusServer(args.status_socket)
     except (StatusUnavailable, OSError):
-        # The Stick still works without it; apps such as BAA show the bridge as missing.
+        # The Stick still works without it; apps such as Kolobok show the bridge as missing.
         print("Status socket unavailable; apps won't see this bridge", file=sys.stderr, flush=True)
         return None
 
@@ -307,7 +307,7 @@ def main():
     parser.add_argument("--ghostty-terminal", help="Ghostty surface UUID when multiple Herdr terminals exist")
     parser.add_argument("--port", help="Confirmed Stick USB serial port")
     parser.add_argument("--no-usb", action="store_true", help="Never open a serial port (status socket only)")
-    parser.add_argument("--status-socket", help="Unix socket for apps such as BAA (default: per-user temp dir)")
+    parser.add_argument("--status-socket", help="Unix socket for apps such as Kolobok (default: per-user temp dir)")
     parser.add_argument("--no-status-socket", action="store_true", help="Don't publish status to apps")
     parser.add_argument("--once", action="store_true", help="Read status without opening USB or focusing")
     args = parser.parse_args()

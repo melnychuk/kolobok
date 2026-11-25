@@ -47,7 +47,7 @@ struct BridgeStatus: Equatable, Sendable, Decodable {
 }
 
 enum Snapshot: Equatable, Sendable {
-    /// BAA can't reach the bridge, so it can't know what the agents are doing.
+    /// Kolobok can't reach the bridge, so it can't know what the agents are doing.
     case noBridge
     /// The bridge is running but can't read Herdr.
     case herdrUnavailable

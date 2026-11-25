@@ -1,13 +1,13 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
-// BAA: Bar for Agent Activity. A menu bar miniature of the Stick's avatar,
+// Kolobok: a menu bar miniature of the Stick's avatar,
 // showing whatever agents Herdr runs, as the Stick's bridge reports them.
 let package = Package(
-    name: "BAA",
+    name: "Kolobok",
     platforms: [.macOS("14.4")],  // Native two-line menu items (NSMenuItem.subtitle).
     targets: [
-        .executableTarget(name: "BAA"),
-        .testTarget(name: "BAATests", dependencies: ["BAA"])
+        .executableTarget(name: "Kolobok"),
+        .testTarget(name: "KolobokTests", dependencies: ["Kolobok"])
     ]
 )

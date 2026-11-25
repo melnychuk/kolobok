@@ -38,18 +38,21 @@ Agents when the physical Stick is plugged in. See [installing the Herdr
 widget](docs/herdr-widget.md). This is a desktop mod,
 not an extension for the terminal-only `herdr` client.
 
-## BAA: agent activity in the macOS menu bar (optional)
+## Kolobok: agent activity in the macOS menu bar (optional)
 
-BAA (Bar for Agent Activity) shows a miniature of the Stick's avatar in the
-macOS menu bar, for every agent Herdr runs, whatever the kind, with or without
-a Stick. To try the states without launching any agents:
+Kolobok (Колобок) is the Stick’s round, gooey little avatar, named after the
+rolling bun from the Ukrainian folktale: a little round character with a face
+and a life of its own. No acronym needed.
+
+In the macOS menu bar, a miniature Kolobok shows activity for every agent
+Herdr runs, with or without a Stick. To try the states without launching any agents:
 
 ```sh
-swift run --package-path menu-bar BAA --demo
+swift run --package-path menu-bar Kolobok --demo
 ```
 
 Click the avatar and choose a state from **Preview**. Omit `--demo` to show the agents the
-Mac bridge reports. See [the BAA guide](docs/baa.md).
+Mac bridge reports. See [the Kolobok guide](docs/kolobok.md).
 
 ## Install the physical Stick
 

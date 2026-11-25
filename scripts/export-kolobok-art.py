@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Export BAA's art and timings from the Swift sources for the Omarchy icon.
+"""Export Kolobok's art and timings from the Swift sources for the Omarchy icon.
 
-The menu bar app (menu-bar/Sources/BAA) is the source of truth. This writes
-omarchy/baa/baa-art.mjs: the hand-drawn grids from AvatarPixels.swift, each
+The menu bar app (menu-bar/Sources/Kolobok) is the source of truth. This writes
+omarchy/kolobok/kolobok-art.mjs: the hand-drawn grids from AvatarPixels.swift, each
 face's eye placement, the layout constants from Avatar.swift and the
-celebration's timings from Celebration.swift, so omarchy/baa/baa-avatar.mjs
+celebration's timings from Celebration.swift, so omarchy/kolobok/kolobok-avatar.mjs
 carries only the drawing logic. Run it after changing any of them:
 
-    python3 scripts/export-baa-art.py
+    python3 scripts/export-kolobok-art.py
 
 `--check` exits non-zero if the file is out of date, without writing it.
 """
@@ -18,13 +18,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCES = ROOT / "menu-bar" / "Sources" / "BAA"
-OUTPUT = ROOT / "omarchy" / "baa" / "baa-art.mjs"
+SOURCES = ROOT / "menu-bar" / "Sources" / "Kolobok"
+OUTPUT = ROOT / "omarchy" / "kolobok" / "kolobok-art.mjs"
 
 
 def need(match, what):
     if not match:
-        sys.exit(f"export-baa-art: couldn't find {what} in the Swift sources")
+        sys.exit(f"export-kolobok-art: couldn't find {what} in the Swift sources")
     return match
 
 
@@ -61,7 +61,7 @@ def export():
     pixels = (SOURCES / "AvatarPixels.swift").read_text()
     avatar = (SOURCES / "Avatar.swift").read_text()
     celebration = (SOURCES / "Celebration.swift").read_text()
-    sizes = {name: int(number(avatar, name)) for name in
+    sizes: dict[str, int | float] = {name: int(number(avatar, name)) for name in
              ("faceWidth", "faceHeight", "sideHeight", "itemHeight", "doneWidth", "tuck", "moat", "burstSteps")}
     sizes["starInner"] = number(avatar, "starInner")
     colors = {name: "#" + "".join(f"{int(v, 16):02X}" for v in need(re.search(
@@ -87,19 +87,19 @@ def export():
         "celebration": {**timing, "flickers": flickers,
                         "beats": [[name, lengths[name]] for name in beat_order]},
     }
-    return ("// BAA's art and timings, exported from menu-bar/Sources/BAA by\n"
-            "// scripts/export-baa-art.py. Don't edit: change the Swift and re-export.\n"
+    return ("// Kolobok's art and timings, exported from menu-bar/Sources/Kolobok by\n"
+            "// scripts/export-kolobok-art.py. Don't edit: change the Swift and re-export.\n"
             f"export default {json.dumps(data, indent=1)};\n")
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--check", action="store_true", help="fail if omarchy/baa/baa-art.mjs is out of date")
+    parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
+    parser.add_argument("--check", action="store_true", help="fail if omarchy/kolobok/kolobok-art.mjs is out of date")
     args = parser.parse_args()
     text = export()
     if args.check:
         if not OUTPUT.exists() or OUTPUT.read_text() != text:
-            sys.exit("omarchy/baa/baa-art.mjs is out of date: run scripts/export-baa-art.py")
+            sys.exit("omarchy/kolobok/kolobok-art.mjs is out of date: run scripts/export-kolobok-art.py")
         return
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(text)

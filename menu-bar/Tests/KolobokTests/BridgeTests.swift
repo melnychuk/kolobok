@@ -1,6 +1,6 @@
 import Darwin
 import XCTest
-@testable import BAA
+@testable import Kolobok
 
 final class BridgeTests: XCTestCase {
     func testDecodesFocusRepliesAndIgnoresOtherVersions() {
@@ -32,7 +32,7 @@ final class BridgeTests: XCTestCase {
     // A real socket: status arrives, a focus request round-trips, and losing the server reads as no bridge.
     @MainActor
     func testTalksToABridgeOverItsSocket() throws {
-        let path = "/tmp/baa-\(getpid()).sock"
+        let path = "/tmp/kolobok-\(getpid()).sock"
         let server = try XCTUnwrap(FakeBridge(path: path))
         defer { server.close() }
         var events: [BridgeEvent] = []

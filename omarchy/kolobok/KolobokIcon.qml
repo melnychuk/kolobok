@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Window
-import "baa-avatar.mjs" as Baa
+import "kolobok-avatar.mjs" as Kolobok
 
-// BAA's menu bar avatar for Omarchy's bar, drawn like the Mac app's status
-// item (menu-bar/Sources/BAA) from the same pixels: the face in the bar's
+// Kolobok's menu bar avatar for Omarchy's bar, drawn like the Mac app's status
+// item (menu-bar/Sources/Kolobok) from the same pixels: the face in the bar's
 // foreground color, blue active work on its left, green completions on its
 // right, a blink every few seconds, the request side's pulse and a new
 // completion's celebration. Load it from the Agents bar widget and bind the
@@ -38,7 +38,7 @@ Item {
     /// Stop timers (and celebrations) while hidden.
     property bool running: visible
 
-    readonly property var geometry: compact ? Baa.compactSizes : Baa.sizes
+    readonly property var geometry: compact ? Kolobok.compactSizes : Kolobok.sizes
     readonly property int headroom: barHeight >= geometry.itemHeight + 6 ? 1 : 0
     readonly property int pixelScale: Screen.devicePixelRatio > 1.25 ? 2 : 1
     readonly property var snapshot: ({ active: active, blocked: blocked, done: done, healthy: healthy && loaded })
@@ -63,7 +63,7 @@ Item {
     }
 
     function describe() {
-        return Baa.describe(snapshot, celebration, now(), {
+        return Kolobok.describe(snapshot, celebration, now(), {
             blinking: blinking, peak: peak, headroom: headroom, compact: compact, measure: measure
         })
     }
@@ -78,7 +78,7 @@ Item {
     // Counts arrive one binding at a time; judge the change once they've all settled.
     onSnapshotChanged: Qt.callLater(settle)
     function settle() {
-        if (completed && shown && !celebration && running && Baa.celebrates(shown, snapshot)) {
+        if (completed && shown && !celebration && running && Kolobok.celebrates(shown, snapshot)) {
             celebration = { started: now(), before: shown }
             celebrationTimer.start()
         }
@@ -97,7 +97,7 @@ Item {
         Qt.callLater(function() { root.shown = root.snapshot; root.completed = true })
     }
 
-    readonly property var pixels: view ? Baa.render(view, pixelScale, [foreground.r, foreground.g, foreground.b],
+    readonly property var pixels: view ? Kolobok.render(view, pixelScale, [foreground.r, foreground.g, foreground.b],
                                                     [background.r, background.g, background.b]) : null
 
     TextMetrics {
@@ -191,7 +191,7 @@ Item {
         interval: 16
         repeat: true
         onTriggered: {
-            if (!root.celebration || root.now() - root.celebration.started >= Baa.celebrationLength(root.celebration)) {
+            if (!root.celebration || root.now() - root.celebration.started >= Kolobok.celebrationLength(root.celebration)) {
                 stop()
                 root.celebration = null
             }

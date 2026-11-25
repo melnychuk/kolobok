@@ -1,5 +1,5 @@
-// BAA's art and timings, exported from menu-bar/Sources/BAA by
-// scripts/export-baa-art.py. Don't edit: change the Swift and re-export.
+// Kolobok's art and timings, exported from menu-bar/Sources/Kolobok by
+// scripts/export-kolobok-art.py. Don't edit: change the Swift and re-export.
 export default {
  "sizes": {
   "faceWidth": 20,

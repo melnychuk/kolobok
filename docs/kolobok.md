@@ -1,10 +1,13 @@
-# BAA: Bar for Agent Activity
+# Kolobok
 
-BAA puts a miniature of the Stick's avatar in the macOS menu bar, with its own
+Named after the round bun from the Ukrainian folktale *Kolobok* (Колобок):
+a little round character with a face and a life of its own. No acronym needed.
+
+Kolobok puts a miniature of the Stick's avatar in the macOS menu bar, with its own
 pixel art drawn for the menu bar at 1× and 2×. It shows every agent Herdr runs,
 whatever the kind (pi, Claude, Codex, Copilot…), exactly as the Stick's bridge
 reports them, so the menu bar and the Stick always agree. You don't need a
-Stick: the bridge can run without one. BAA needs macOS 14.4+ with Swift 5.9+ to
+Stick: the bridge can run without one. Kolobok needs macOS 14.4+ with Swift 5.9+ to
 build.
 
 ## Preview the states
@@ -12,7 +15,7 @@ build.
 From the checkout:
 
 ```sh
-swift run --package-path menu-bar BAA --demo
+swift run --package-path menu-bar Kolobok --demo
 ```
 
 Click the avatar and choose a state from **Preview**. The avatar and the menu
@@ -33,7 +36,7 @@ below.
 | Working + done | Focused face between the blue and green sides |
 | Mixed | Yellow `!` side and green side; the menu still lists every agent |
 | Herdr unavailable | Closed eyes, face at half strength |
-| No bridge | Puzzled face, one eye squinting: BAA can't know what the agents are doing |
+| No bridge | Puzzled face, one eye squinting: Kolobok can't know what the agents are doing |
 
 The face is a template image, so macOS colors it for the menu bar. The active
 count is white on blue, and the black `!` sits on a side that steps between
@@ -58,7 +61,7 @@ that's skipped unless asked for. After changing the art or the celebration,
 regenerate them on a Mac:
 
 ```sh
-BAA_SPRITES_DIR=site/media/baa swift test --package-path menu-bar --filter SiteSprites
+KOLOBOK_SPRITES_DIR=site/media/kolobok swift test --package-path menu-bar --filter SiteSprites
 ```
 
 Click the avatar for a standard macOS menu of your agents, grouped under their
@@ -66,12 +69,12 @@ Herdr spaces in Herdr's order. Each takes one line: a pane name you set, or
 else the agent's kind, then in grey its status (and its tab, when a space has
 several agents), after a dot in the Stick's status color. Agents Herdr runs on
 another machine say so in their space's header. To quit, right-click (or Control-click) it
-and choose **Quit BAA**, or press Ctrl-C in the launching terminal. Nothing is
+and choose **Quit Kolobok**, or press Ctrl-C in the launching terminal. Nothing is
 installed or started at login.
 
 ## Show live agents
 
-BAA has no Herdr logic of its own. It reads the Mac bridge
+Kolobok has no Herdr logic of its own. It reads the Mac bridge
 (`bridge/macos_herdr_bridge.py`), the same process that drives the Stick, so
 both count agents the same way, including Herdr's own unread state. For Herdr
 Desktop, run the bridge with its Desktop source (add `--no-usb` without a
@@ -79,39 +82,41 @@ Stick; see [Mac / Herdr integration](macos-herdr.md) for the LaunchAgent):
 
 ```sh
 python3 bridge/macos_herdr_bridge.py --herdr-source desktop --no-usb
-swift run --package-path menu-bar BAA
+swift run --package-path menu-bar Kolobok
 ```
 
 The bridge publishes its status on a Unix socket in the per-user temporary
 directory (`$(getconf DARWIN_USER_TEMP_DIR)stick-s3/bridge.sock`): one socket
 file when it starts, then everything stays in memory, with no status files
-written while it runs. Only your user can connect. BAA reconnects on its own;
+written while it runs. Only your user can connect. Kolobok reconnects on its own;
 if the bridge stops or stalls for more than 12 seconds, the face turns puzzled.
 
-Choose an agent to show it in Herdr. BAA asks the bridge, which checks the agent
+Choose an agent to show it in Herdr. Kolobok asks the bridge, which checks the agent
 against a fresh Herdr snapshot, focuses it and brings a running Herdr forward;
 it never launches Herdr, sends terminal input, or approves prompts. Only one
-focus runs at a time, shared with the Stick's button. BAA doesn't read
+focus runs at a time, shared with the Stick's button. Kolobok doesn't read
 transcripts; the bridge passes it each agent's kind, its terminal or tab name
 and its status, and keeps them out of its logs.
 
 ## The same avatar in Omarchy's bar
 
-On Linux, the Omarchy Agents bar widget can show BAA's avatar in place of its
-robot glyph, drawn from the same pixels: `omarchy/baa/BaaIcon.qml` draws it on
-a Canvas with `baa-avatar.mjs`, a JavaScript port of the app's drawing and
+On Linux, the Omarchy Agents bar widget can show Kolobok's avatar in place of its
+robot glyph, drawn from the same pixels: `omarchy/kolobok/KolobokIcon.qml` draws it on
+a Canvas with `kolobok-avatar.mjs`, a JavaScript port of the app's drawing and
 celebration. The art, eye placements and timings come straight from the Swift
-in `omarchy/baa/baa-art.mjs`; re-export it after changing them:
+in `omarchy/kolobok/kolobok-art.mjs`; re-export it after changing them:
 
 ```sh
-python3 scripts/export-baa-art.py
-node --test tests/baa-omarchy.test.mjs   # the port against the app's own frames
-scripts/install-baa-omarchy.sh           # copy it where the widget loads it
+python3 scripts/export-kolobok-art.py
+node --test tests/kolobok-omarchy.test.mjs   # the port against the app's own frames
+scripts/install-kolobok-omarchy.sh           # copy it where the widget loads it
 ```
 
-The install script only copies files into `~/.local/share/stick-s3/baa`; the
-widget picks them up the next time the shell loads it, and keeps its glyph
-without them or on a vertical bar. The face takes the bar's foreground color,
+The install script copies files into `~/.local/share/stick-s3/kolobok` (or
+the equivalent under `$XDG_DATA_HOME`). It also installs a compatibility copy
+for existing widgets that load `stick-s3/baa/BaaIcon.qml`. The widget picks up
+the icon the next time the shell loads it, and keeps its glyph without the
+files or on a vertical bar. The face takes the bar's foreground color,
 the side's label the bar's font, and the counts are the widget's own.
 
 Omarchy draws the compact avatar, two points shorter than the menu bar's so

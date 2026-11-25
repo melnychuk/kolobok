@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import BAA
+@testable import Kolobok
 
 final class AvatarTests: XCTestCase {
     private let arts: [String: AvatarArt.Art] = [

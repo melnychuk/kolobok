@@ -1,5 +1,5 @@
 import XCTest
-@testable import BAA
+@testable import Kolobok
 
 final class StatusTests: XCTestCase {
     // The shape bridge/status_socket.py publishes (see tests/test_status_socket.py): one line per message.

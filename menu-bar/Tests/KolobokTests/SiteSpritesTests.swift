@@ -1,15 +1,15 @@
 import AppKit
 import XCTest
-@testable import BAA
+@testable import Kolobok
 
-/// Renders menu bar frames for the product site (site/js/menubar.js), as BAA
+/// Renders menu bar frames for the product site (site/js/menubar.js), as Kolobok
 /// draws them on a dark menu bar: the white face with the status sides, 2×
 /// pixels. Key states by name, and a completion's whole celebration, from
 /// one active task to one done, sampled at 60 fps: each distinct frame as
 /// celebrate-N.png, listed with its start time in celebrate.js. Skipped
 /// unless asked for:
 ///
-///     BAA_SPRITES_DIR=site/media/baa swift test --package-path menu-bar --filter SiteSprites
+///     KOLOBOK_SPRITES_DIR=site/media/kolobok swift test --package-path menu-bar --filter SiteSprites
 @MainActor
 final class SiteSpritesTests: XCTestCase {
     private struct Step: Encodable {
@@ -19,8 +19,8 @@ final class SiteSpritesTests: XCTestCase {
     }
 
     func testRenderSiteSprites() throws {
-        guard let path = ProcessInfo.processInfo.environment["BAA_SPRITES_DIR"] else {
-            throw XCTSkip("Set BAA_SPRITES_DIR to render the site's menu bar sprites")
+        guard let path = ProcessInfo.processInfo.environment["KOLOBOK_SPRITES_DIR"] else {
+            throw XCTSkip("Set KOLOBOK_SPRITES_DIR to render the site's menu bar sprites")
         }
         // Relative to the repo root, whatever directory the tests run in.
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()

@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import BAA
+@testable import Kolobok
 
 @MainActor
 final class CelebrationTests: XCTestCase {

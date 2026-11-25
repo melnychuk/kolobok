@@ -1,5 +1,5 @@
-// The Omarchy bar icon's JavaScript port of BAA (omarchy/baa) against the
-// menu bar app's own pixels: the site's frames (site/media/baa), which the
+// The Omarchy bar icon's JavaScript port of Kolobok (omarchy/kolobok) against the
+// menu bar app's own pixels: the site's frames (site/media/kolobok), which the
 // Swift app renders (menu-bar's SiteSprites test), and the behaviour they
 // don't show. Run with `node --test tests/`.
 import assert from "node:assert/strict";
@@ -8,15 +8,15 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { inflateSync } from "node:zlib";
-import * as Baa from "../omarchy/baa/baa-avatar.mjs";
-import CELEBRATE from "../site/media/baa/celebrate.js";
+import * as Kolobok from "../omarchy/kolobok/kolobok-avatar.mjs";
+import CELEBRATE from "../site/media/kolobok/celebrate.js";
 
 const run = promisify(execFile);
-const S = Baa.sizes;
+const S = Kolobok.sizes;
 
 /** A minimal PNG reader: 8-bit RGBA or RGB, not interlaced. */
 async function readPng(name) {
-  const file = await readFile(new URL(`../site/media/baa/${name}.png`, import.meta.url));
+  const file = await readFile(new URL(`../site/media/kolobok/${name}.png`, import.meta.url));
   let width = 0, height = 0, type = 0;
   const chunks = [];
   for (let at = 8; at < file.length;) {
@@ -59,7 +59,7 @@ const snapshot = (active, blocked, done, healthy = true) => ({ active, blocked, 
 
 /** The icon's pixels as the site draws them: white face, star over the base. */
 function pixels(view) {
-  const px = Baa.render(view, 2, [1, 1, 1]);
+  const px = Kolobok.render(view, 2, [1, 1, 1]);
   const out = new Uint8Array(px.base.length);
   for (let i = 0; i < out.length; i += 4) {
     const base = [...px.base.subarray(i, i + 4)].map((v) => v / 255);
@@ -93,7 +93,7 @@ async function assertMatches(name, view) {
 }
 
 test("the art export is up to date with the Swift", async () => {
-  await run("python3", [new URL("../scripts/export-baa-art.py", import.meta.url).pathname, "--check"]);
+  await run("python3", [new URL("../scripts/export-kolobok-art.py", import.meta.url).pathname, "--check"]);
 });
 
 test("states draw the menu bar app's pixels", async () => {
@@ -104,33 +104,33 @@ test("states draw the menu bar app's pixels", async () => {
     "attention-peak": [snapshot(1, 1, 0), { peak: true }], "done": [snapshot(0, 0, 1), {}],
   };
   for (const [name, [s, options]] of Object.entries(states)) {
-    await assertMatches(name, Baa.describe(s, null, 0, { ...options, measure }));
+    await assertMatches(name, Kolobok.describe(s, null, 0, { ...options, measure }));
   }
 });
 
 test("a completion plays the menu bar app's celebration, frame for frame", async () => {
   const celebration = { started: 0, before: snapshot(1, 0, 0) };
-  assert.ok(Math.abs(Baa.celebrationLength(celebration) - CELEBRATE.at(-1).ms / 1000) < 1 / 60);
+  assert.ok(Math.abs(Kolobok.celebrationLength(celebration) - CELEBRATE.at(-1).ms / 1000) < 1 / 60);
   for (const { frame, ms } of CELEBRATE) {
-    await assertMatches(frame, Baa.describe(snapshot(0, 0, 1), celebration, ms / 1000, { measure }));
+    await assertMatches(frame, Kolobok.describe(snapshot(0, 0, 1), celebration, ms / 1000, { measure }));
   }
 });
 
 test("only a rise between two healthy snapshots celebrates", () => {
-  assert.ok(Baa.celebrates(snapshot(1, 0, 0), snapshot(0, 0, 1)));
-  assert.ok(!Baa.celebrates(snapshot(0, 0, 1), snapshot(1, 0, 1)));
-  assert.ok(!Baa.celebrates(snapshot(0, 0, 0, false), snapshot(0, 0, 1)));
-  assert.ok(!Baa.celebrates(null, snapshot(0, 0, 1)));
+  assert.ok(Kolobok.celebrates(snapshot(1, 0, 0), snapshot(0, 0, 1)));
+  assert.ok(!Kolobok.celebrates(snapshot(0, 0, 1), snapshot(1, 0, 1)));
+  assert.ok(!Kolobok.celebrates(snapshot(0, 0, 0, false), snapshot(0, 0, 1)));
+  assert.ok(!Kolobok.celebrates(null, snapshot(0, 0, 1)));
 });
 
 test("the green stays in the sides' band while the burst blasts the face away", () => {
   const celebration = { started: 0, before: snapshot(2, 0, 0) };
   const top = (S.itemHeight - S.sideHeight) / 2 * 2, bottom = top + S.sideHeight * 2;
   let sawFace = false;
-  for (let ms = 0; ms < Baa.celebrationLength(celebration) * 1000; ms += 1000 / 60) {
-    const view = Baa.describe(snapshot(1, 0, 1), celebration, ms / 1000, { measure });
+  for (let ms = 0; ms < Kolobok.celebrationLength(celebration) * 1000; ms += 1000 / 60) {
+    const view = Kolobok.describe(snapshot(1, 0, 1), celebration, ms / 1000, { measure });
     if (!view.star && !view.flash) continue;
-    const px = Baa.render(view, 2, [1, 1, 1]);
+    const px = Kolobok.render(view, 2, [1, 1, 1]);
     for (let row = 0; row < px.height; row++) {
       if (row >= top && row < bottom) continue;
       for (let column = 0; column < px.width; column++) {
@@ -148,13 +148,13 @@ test("the green stays in the sides' band while the burst blasts the face away", 
 });
 
 test("with work still active, the face drops in from above onto a blue-to-green bar", () => {
-  const L = Baa.layout(14, true);
-  const back = Baa.beats.flatMap((beat) => [0, 0.5, 0.95].map((p) => Baa.act(beat, p, L)));
+  const L = Kolobok.layout(14, true);
+  const back = Kolobok.beats.flatMap((beat) => [0, 0.5, 0.95].map((p) => Kolobok.act(beat, p, L)));
   assert.ok(back.every((a) => a.pose.dx === 0));
-  assert.equal(Baa.act("peek", 0.2, L).face, "lookingDown");
-  const view = Baa.describe(snapshot(1, 0, 1), { started: 0, before: snapshot(2, 0, 0) }, 2.0, { measure });
+  assert.equal(Kolobok.act("peek", 0.2, L).face, "lookingDown");
+  const view = Kolobok.describe(snapshot(1, 0, 1), { started: 0, before: snapshot(2, 0, 0) }, 2.0, { measure });
   assert.ok(view.sides.wash);
-  const px = Baa.render(view, 1, [1, 1, 1]);
+  const px = Kolobok.render(view, 1, [1, 1, 1]);
   const at = (column) => [...px.base.subarray((9 * px.width + column) * 4, (9 * px.width + column) * 4 + 4)];
   const blue = at(L.faceX - 2), green = at(L.width - 2);
   assert.ok(blue[2] > blue[1] + 50 && green[1] > green[2] + 50, `${blue} ${green}`);
@@ -162,12 +162,12 @@ test("with work still active, the face drops in from above onto a blue-to-green 
 
 test("without headroom the icon keeps to the face's 16 points", () => {
   const celebration = { started: 0, before: snapshot(1, 0, 0) };
-  for (let ms = 0; ms < Baa.celebrationLength(celebration) * 1000; ms += 1000 / 60) {
-    const view = Baa.describe(snapshot(0, 0, 1), celebration, ms / 1000, { measure, headroom: 0 });
-    const px = Baa.render(view, 1, [1, 1, 1]);
+  for (let ms = 0; ms < Kolobok.celebrationLength(celebration) * 1000; ms += 1000 / 60) {
+    const view = Kolobok.describe(snapshot(0, 0, 1), celebration, ms / 1000, { measure, headroom: 0 });
+    const px = Kolobok.render(view, 1, [1, 1, 1]);
     assert.equal(px.height, S.faceHeight);
     if (view.pose) {
-      const top = Baa.poseTop(view.pose);
+      const top = Kolobok.poseTop(view.pose);
       if (view.pose.dx !== 0 || view.pose.lift <= 1) {
         assert.ok(top >= 1 && top + view.pose.height <= S.itemHeight - 1, `${ms}ms: ${JSON.stringify(view.pose)}`);
       }
@@ -176,13 +176,13 @@ test("without headroom the icon keeps to the face's 16 points", () => {
 });
 
 test("the compact avatar is two points shorter, its face filling a 16 px icon at rest", () => {
-  const C = Baa.compactSizes;
+  const C = Kolobok.compactSizes;
   assert.deepEqual([C.faceHeight, C.sideHeight, C.itemHeight], [S.faceHeight - 2, S.sideHeight - 2, S.itemHeight - 2]);
   assert.ok(C.labelSize < S.labelSize);
-  const view = Baa.describe(snapshot(2, 0, 1), null, 0, { measure, compact: true });
-  const px = Baa.render(view, 1, [1, 1, 1]);
+  const view = Kolobok.describe(snapshot(2, 0, 1), null, 0, { measure, compact: true });
+  const px = Kolobok.render(view, 1, [1, 1, 1]);
   assert.equal(px.height, 16);
-  assert.equal(Baa.poseTop(view.pose, C), 1);
+  assert.equal(Kolobok.poseTop(view.pose, C), 1);
   // The face fills rows 1-14; the sides keep a point clear of it above and below.
   const alpha = (column, row) => px.base[(row * px.width + column) * 4 + 3];
   const face = view.layout.faceX + C.faceWidth / 2;
@@ -196,19 +196,19 @@ test("the compact avatar is two points shorter, its face filling a 16 px icon at
 });
 
 test("the compact avatar's celebration stays in its item, eyes inside the face", () => {
-  const C = Baa.compactSizes;
+  const C = Kolobok.compactSizes;
   for (const [before, after] of [[snapshot(1, 0, 0), snapshot(0, 0, 1)], [snapshot(2, 0, 0), snapshot(1, 0, 1)]]) {
     const celebration = { started: 0, before };
-    for (let ms = 0; ms < Baa.celebrationLength(celebration) * 1000; ms += 1000 / 60) {
-      const view = Baa.describe(after, celebration, ms / 1000, { measure, compact: true });
-      const px = Baa.render(view, 2, [1, 1, 1]);
+    for (let ms = 0; ms < Kolobok.celebrationLength(celebration) * 1000; ms += 1000 / 60) {
+      const view = Kolobok.describe(after, celebration, ms / 1000, { measure, compact: true });
+      const px = Kolobok.render(view, 2, [1, 1, 1]);
       assert.equal(px.height, C.itemHeight * 2);
       if (!view.face) continue;
       const { pose } = view;
-      assert.ok(Baa.poseTop(pose, C) + pose.height <= C.itemHeight, `${ms}ms bottom`);
-      if (pose.dx !== 0 || pose.lift <= 1) assert.ok(Baa.poseTop(pose, C) >= 0, `${ms}ms top`);
+      assert.ok(Kolobok.poseTop(pose, C) + pose.height <= C.itemHeight, `${ms}ms bottom`);
+      if (pose.dx !== 0 || pose.lift <= 1) assert.ok(Kolobok.poseTop(pose, C) >= 0, `${ms}ms top`);
       const shift = Math.trunc((pose.height - S.faceHeight) / 2);
-      for (const [art, , top] of Baa.eyes(view.face, view.blinking)) {
+      for (const [art, , top] of Kolobok.eyes(view.face, view.blinking)) {
         const rows = { open: 7, resting: 5, focused: 5, happy: 4, wide: 8, closed: 1, squint: 4 }[art];
         assert.ok(top + shift >= 1 && top + shift + rows <= pose.height - 1, `${ms}ms ${view.face} eyes`);
       }
@@ -217,19 +217,19 @@ test("the compact avatar's celebration stays in its item, eyes inside the face",
 });
 
 test("a theme's ink labels the side where it reads clearly, else black or white", () => {
-  const blue = Baa.rgb(Baa.colors.working), yellow = Baa.rgb(Baa.colors.request);
-  const dark = Baa.rgb("#030a03"), light = Baa.rgb("#f2f0e6"), mid = Baa.rgb("#3b4252");
-  assert.deepEqual(Baa.labelInk(blue, dark), dark);
-  assert.deepEqual(Baa.labelInk(yellow, dark), dark);
+  const blue = Kolobok.rgb(Kolobok.colors.working), yellow = Kolobok.rgb(Kolobok.colors.request);
+  const dark = Kolobok.rgb("#030a03"), light = Kolobok.rgb("#f2f0e6"), mid = Kolobok.rgb("#3b4252");
+  assert.deepEqual(Kolobok.labelInk(blue, dark), dark);
+  assert.deepEqual(Kolobok.labelInk(yellow, dark), dark);
   // A light theme's background doesn't read on blue: the more contrasting of black and white does.
-  assert.deepEqual(Baa.labelInk(blue, light), [0, 0, 0]);
-  assert.deepEqual(Baa.labelInk(blue, mid), [0, 0, 0]);
-  assert.ok(Baa.contrast([0, 0, 0], blue) > Baa.contrast([1, 1, 1], blue));
+  assert.deepEqual(Kolobok.labelInk(blue, light), [0, 0, 0]);
+  assert.deepEqual(Kolobok.labelInk(blue, mid), [0, 0, 0]);
+  assert.ok(Kolobok.contrast([0, 0, 0], blue) > Kolobok.contrast([1, 1, 1], blue));
   // The menu bar's own colors without one; the theme's with one.
-  const view = Baa.describe(snapshot(2, 0, 0), null, 0, { measure, compact: true });
-  assert.equal(Baa.render(view, 1, [1, 1, 1]).label.color, "white");
-  assert.equal(Baa.render(view, 1, [1, 1, 1], dark).label.color, "rgb(3, 10, 3)");
-  const ask = Baa.describe(snapshot(1, 1, 0), null, 0, { measure, compact: true });
-  assert.equal(Baa.render(ask, 1, [1, 1, 1]).label.color, "black");
-  assert.equal(Baa.render(ask, 1, [1, 1, 1], light).label.color, "rgb(0, 0, 0)");
+  const view = Kolobok.describe(snapshot(2, 0, 0), null, 0, { measure, compact: true });
+  assert.equal(Kolobok.render(view, 1, [1, 1, 1]).label.color, "white");
+  assert.equal(Kolobok.render(view, 1, [1, 1, 1], dark).label.color, "rgb(3, 10, 3)");
+  const ask = Kolobok.describe(snapshot(1, 1, 0), null, 0, { measure, compact: true });
+  assert.equal(Kolobok.render(ask, 1, [1, 1, 1]).label.color, "black");
+  assert.equal(Kolobok.render(ask, 1, [1, 1, 1], light).label.color, "rgb(0, 0, 0)");
 });

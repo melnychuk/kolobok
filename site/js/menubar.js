@@ -1,10 +1,10 @@
-// The menu bar chapter's fake macOS menu bar: BAA's own frames (media/baa,
+// The menu bar chapter's fake macOS menu bar: Kolobok's own frames (media/kolobok,
 // rendered by menu-bar's SiteSprites test) acting out key states, timed like
-// the app (menu-bar/Sources/BAA): blinks, the request pulse, and a new
-// completion's celebration, frame for frame (media/baa/celebrate.js). At the
-// end a click opens BAA's agents menu, as macOS draws it, and the pointer
+// the app (menu-bar/Sources/Kolobok): blinks, the request pulse, and a new
+// completion's celebration, frame for frame (media/kolobok/celebrate.js). At the
+// end a click opens Kolobok's agents menu, as macOS draws it, and the pointer
 // heads for the finished agent. Times are ms into one loop.
-import CELEBRATE from "../media/baa/celebrate.js";
+import CELEBRATE from "../media/kolobok/celebrate.js";
 
 const LOOP = 19500;
 // State frame widths in pixels (2× art, 36 px tall); the celebration's are in its manifest.
@@ -54,12 +54,12 @@ function timeline(reduceMotion) {
 export function menubarScene(figure) {
   const screen = figure.querySelector(".mb-screen");
   const item = figure.querySelector(".mb-item");
-  const icon = figure.querySelector(".mb-baa");
+  const icon = figure.querySelector(".mb-kolobok");
   const caption = figure.querySelector(".mb-state");
   const menu = figure.querySelector(".mb-menu");
   const target = menu.querySelector(".mb-row.is-done");
   const pointer = figure.querySelector(".mb-pointer");
-  const src = (frame) => `media/baa/${frame}.png`;
+  const src = (frame) => `media/kolobok/${frame}.png`;
   let loaded = false;
   // Only Apple's fonts have its logo (U+F8FF); elsewhere keep the drawn apple.
   const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
