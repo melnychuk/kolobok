@@ -103,5 +103,28 @@ int main() {
  assert(avatar.stick.face==avatar_behavior::Mode::finished);
  avatar.frame(37000,2,0,4,false,true);
  assert(avatar.stick.face==avatar_behavior::Mode::working);
+ // Intentional rhythm on the live compositor: a check leaves only after the
+ // clip's return has been held kRestLead, and the next clip departs only
+ // kHoldSettleMs after the check (with its body follow-through) has ended.
+ {
+  HeaderAvatar live;live.emit=false;
+  uint32_t clipStart=0,checkEnd=0;int checks=0,clips=0;bool wasBusy=false;
+  for(uint32_t ms=0;ms<300000;ms+=33) {
+   live.frame(ms,3,0,2,false,true);
+   auto& s=live.stick;
+   const bool busy=s.counterChecks.busy(ms);
+   if(busy&&!wasBusy&&ms>8000) {
+    assert(s.actor.restAge(ms)>=avatar_interaction::Checks::kRestLead);++checks;
+   }
+   if(!busy&&wasBusy)checkEnd=ms;
+   if(s.actor.started!=clipStart) {
+    clipStart=s.actor.started;
+    if(checkEnd&&ms>checkEnd)assert(ms-checkEnd>=avatar_behavior::Director::kHoldSettleMs);
+    ++clips;
+   }
+   wasBusy=busy;
+  }
+  assert(checks>=15&&clips>=50);
+ }
  return 0;
 }

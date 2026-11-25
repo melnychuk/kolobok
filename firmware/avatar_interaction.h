@@ -99,6 +99,9 @@ struct Startle {
 struct Checks {
  static constexpr uint32_t kCycle=8400,kActiveLength=2100,kDoneLength=2600,kBodyLag=90;
  static constexpr uint32_t kFirstDelay=1400,kGapMin=5200,kGapMax=12800;
+ // A check begins only once the clip's return to rest has been held this long
+ // (callers gate `ready`), so the eyes never leave again the moment they land.
+ static constexpr uint32_t kRestLead=800;
  uint32_t started=0,previousPhase=0,actionCycle=0;
  bool enabled=false,donePresent=true,activePresent=true;
  bool fixed=false;

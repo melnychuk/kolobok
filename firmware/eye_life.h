@@ -14,16 +14,22 @@ struct Mood {
  float doubleChance;       // Chance that a procedural blink is a double blink.
  float saccadeBlink;       // Chance of blinking with a large authored gaze jump.
 };
-constexpr Mood kThinking={1,3200,5600,.10f,.55f};
-constexpr Mood kDone={1,2800,4800,.20f,.55f};
+// Blinks are mostly motivated: they ride on big gaze shifts (saccadeBlink),
+// while the unprompted timer only fills long holds (~one per 4-7s).
+constexpr Mood kThinking={1,4200,7000,.10f,.70f};
+constexpr Mood kDone={1,3600,6000,.20f,.65f};
 constexpr Mood kAttention={1.15f,2600,4400,0,.6f};  // Short single closures only.
 constexpr Mood kListening={.6f,3400,6000,.10f,.4f};
-constexpr Mood kIdle={1,2800,5200,.15f,.5f};
+constexpr Mood kIdle={1,3600,6400,.15f,.6f};
 constexpr Mood kOffline={.5f,3500,6000,0,0};
 
 constexpr float kMicroX=1.8f,kMicroY=1.1f;
 constexpr uint16_t kMicroMoveMs=60;
 constexpr uint16_t kMicroMinMs=700,kMicroMaxMs=2200;
+// A fresh fixation holds exactly where the authored move landed for this long
+// before fixational drift may begin, so landings read as deliberate stops,
+// not as a second, smaller step right after the saccade.
+constexpr uint16_t kMicroSettleMs=450;
 constexpr uint16_t kBlinkClose=70,kBlinkHold=30,kBlinkOpen=140,kBlinkLag=14;
 constexpr uint32_t kBlinkLength=kBlinkClose+kBlinkHold+kBlinkOpen+kBlinkLag;
 constexpr uint16_t kDoubleGap=90;
@@ -48,8 +54,12 @@ struct Life {
  uint32_t seed=0x2545f491u,microSeed=0x9e3779b9u;
  bool primed=false,blinking=false,leftLeads=true,doubleNext=false,second=false;
  bool segmentSeen=false;
+ // fixating: inside one uninterrupted still stretch, anchored at fixationAt.
+ // engaged: a micro-saccade has started from that fixation's exact landing.
+ bool fixating=false,engaged=false;
  float fromX=0,fromY=0,toX=0,toY=0,weight=0;
  uint32_t moveAt=0,nextMoveAt=0,blinkAt=0,nextBlinkAt=0,lastClosureAt=0,lastSegment=0;
+ uint32_t fixationAt=0;
 
  static uint32_t next(uint32_t& state) {
   if(!state)state=1;
@@ -81,17 +91,29 @@ struct Life {
    lastClosureAt=now-kBlinkRefractoryMs;  // Startup is not a closure.
    reschedule(now,mood);
   }
+  // A fixation starts when the eyes become still; an authored hold anchors at
+  // its exact segment start, so the settle delay is frame-rate independent.
+  if(!still) fixating=engaged=false;
+  else if(!fixating) {
+   fixating=true;engaged=false;
+   fixationAt=segment&&segment->valid?segment->start:now;
+  }
   // Fixational micro-saccades on an absolute schedule (frame-rate independent).
   if(static_cast<int32_t>(now-nextMoveAt)>3000) nextMoveAt=now;  // Long stall.
   while(reached(now,nextMoveAt)) {
    micro(nextMoveAt,fromX,fromY);
+   // The first drift of a settled fixation leaves from its exact landing.
+   if(fixating&&!engaged&&reached(nextMoveAt,fixationAt+kMicroSettleMs)) {
+    engaged=true;fromX=fromY=0;
+   }
    if(unit(microSeed)<.35f) { toX=toY=0; }  // Re-centre now and then; never wander off.
    else { toX=(unit(microSeed)*2-1)*kMicroX;toY=(unit(microSeed)*2-1)*kMicroY; }
    moveAt=nextMoveAt;nextMoveAt=moveAt+between(microSeed,kMicroMinMs,kMicroMaxMs);
   }
-  const float target=still?1.0f:0.0f;
-  const float tau=still?.12f:.05f;
-  weight+=(target-weight)*(1-expf(-fmaxf(0,seconds)/tau));
+  // Engaging needs no fade-in (the drift starts from zero offset); leaving a
+  // hold still fades the offset out quickly under the authored move.
+  if(engaged) weight=1;
+  else weight*=expf(-fmaxf(0,seconds)/.05f);
   float mx,my;micro(now,mx,my);
   eyes.x+=mx*mood.micro*weight;eyes.y+=my*mood.micro*weight;
 

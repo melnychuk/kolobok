@@ -326,7 +326,7 @@ struct Avatar {
     if(performance.transitioning||buttonCue.active||staged||startle.active)countReaction.active=false;
     counterChecks.update(now,taskActing&&!performance.transitioning&&!staged&&
         !countReaction.active&&!buttonCue.active&&!startle.active,&surface,doneCount>0,activeCount>0,
-        !scripted||actor.resting(now));
+        !scripted||actor.restAge(now)>=avatar_interaction::Checks::kRestLead);
     actingBody=counterChecks.apply(actingBody,now,true);
     actingEyes=counterChecks.apply(actingEyes,now);
     actingBody=counterFlight.apply(actingBody,now,true);

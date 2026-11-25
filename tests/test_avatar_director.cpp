@@ -100,6 +100,22 @@ int main() {
   }
   assert(quiet&&pair);
  }
+ // After an external hold (a counter check) ends, the rest is held another
+ // kHoldSettleMs before the next clip departs, at any cadence.
+ for(uint32_t cadence: {17u,33u,50u}) {
+  Director phrase;eye_acting::Player actor;
+  int releases=0;uint32_t releasedAt=0;bool held=false;
+  for(uint32_t now=0;now<120000;now+=cadence) {
+   const bool hold=actor.index>=0&&actor.resting(now)&&(now/4000)%3==1;
+   const uint32_t before=actor.started;
+   const auto frame=phrase.step(Mode::working,actor,now,now*1664525u,hold,t);
+   phrase.capture(now,frame.eyes,frame.body);
+   if(held&&!hold) { releasedAt=now;++releases; }
+   if(actor.started!=before&&releases&&!hold)assert(now-releasedAt>=Director::kHoldSettleMs||now<releasedAt);
+   held=hold;
+  }
+  assert(releases>5);
+ }
  assert(Director::reason(Mode::offline,Mode::finished,false)==Beat::reconnect);
  assert(Director::reason(Mode::waiting,Mode::working,false)==Beat::resume);
  assert(Director::reason(Mode::working,Mode::finished,true)==Beat::complete);

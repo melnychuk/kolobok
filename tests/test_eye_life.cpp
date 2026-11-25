@@ -4,7 +4,6 @@
 #include <initializer_list>
 #include <math.h>
 #include <stdio.h>
-#include <string.h>
 #include <vector>
 #include "../firmware/avatar_scene.h"
 #include "../firmware/eye_life.h"
@@ -128,6 +127,21 @@ int main() {
   for(uint32_t t=6000;t<6300;t+=33){last=fade.apply(p(),t,.033f,eye_life::kIdle,false,false).x;at=t;}
   float mx,my;fade.micro(at,mx,my);
   assert(fabsf(last)<=fabsf(mx)*.01f+.01f);
+  // A fresh fixation holds exactly where it landed for kMicroSettleMs, then
+  // drifts continuously from zero offset (no jump, no blended slide).
+  for(int step:{16,33,50}) {
+   eye_life::Life settle;float previous=0;bool drifted=false;
+   for(uint32_t t=0;t<4000;t+=step)settle.apply(p(),t,step/1000.0f,eye_life::kIdle,true,false);
+   for(uint32_t t=4000;t<4500;t+=step)settle.apply(p(),t,step/1000.0f,eye_life::kIdle,false,false);
+   eye_acting::Segment hold;hold.valid=hold.still=true;hold.start=4500;
+   for(uint32_t t=4500;t<12000;t+=step) {
+    const auto pose=settle.apply(p(),t,step/1000.0f,eye_life::kIdle,true,false,&hold);
+    if(t<4500+eye_life::kMicroSettleMs)assert(fabsf(pose.x)<.001f&&fabsf(pose.y)<.001f);
+    assert(fabsf(pose.x-previous)<=eye_life::kMicroX*1.2f+.01f); // never a teleport
+    drifted=drifted||pose.x!=0;previous=pose.x;
+   }
+   assert(drifted);
+  }
  }
  // Procedural blinks: fully close at 20/25/30/60fps, short, spaced, both eyes.
  for(int step:{50,40,33,16}) {
@@ -258,7 +272,11 @@ int main() {
   // Requests used to clamp every authored height to a 48px floor; their
   // stretch peaks (1.25 -> ~52px) are now visible on purpose. Allow only that
   // peak (+10%) while the MEAN workload keeps the original +3% guard.
-  assert(w.max<=kBaselineMax[layout]*(layout?110:103)/100);
+  // The max is sub-pixel-phase sensitive: Check then ask's authored stretch
+  // at its exact (zero micro-offset) position counts 6024 even on the
+  // pre-settle kernel, which merely happened to sample it 0.66px off-centre.
+  // Fixations now hold their exact landing, so allow that frame (+11%).
+  assert(w.max<=kBaselineMax[layout]*(layout?111:103)/100);
   assert(mean<=kBaselineMean[layout]*1.03);
  }
  printf("Eye life/easing/spring/blink-shape checks passed\n");

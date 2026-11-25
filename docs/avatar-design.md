@@ -811,6 +811,41 @@ baseline; max unchanged). The reference kernels do not model per-eye
 scale/lower lids/slant, so oracle tests compare clip poses without them. Flashed with hashes verified; physical
 appearance and timing not yet reviewed.
 
+## Intentional rhythm: settled fixations and phrased checks
+
+A motion probe drove the live header compositor (synthetic aggregates only,
+10 simulated minutes per layout, three seeds) and logged the composed gaze.
+The sporadic feel had three systemic causes outside the authored clips:
+
+- **Micro-saccades right after landings.** The life layer's absolute schedule
+  and a 120ms weight blend meant ~45% of small post-landing moves were a
+  fixational drift sliding in just as an authored saccade arrived (a second,
+  smaller step). A fixation now holds its exact landing for
+  `eye_life::kMicroSettleMs` (450ms, anchored at the segment start, so it is
+  frame-rate independent); its first drift then leaves from zero offset with no
+  blend. Leaving a hold still fades the offset out in ~50ms.
+- **Checks fused with clips.** A clip's pause usually elapsed during a counter
+  check, so the next clip departed the instant the check's look returned, and
+  checks could leave the moment a clip's return landed: one swing through the
+  centre. Checks now need `Checks::kRestLead` (800ms) of rest before they start
+  (`Player::restAge`), and `Director::kHoldSettleMs` (900ms) holds the rest
+  after a check ends before the next clip departs, matching the clip pause floor.
+- **Unmotivated blinks.** Procedural timers produced most of ~17 closures/min.
+  Unprompted intervals are longer (thinking 4.2–7s, completion 3.6–6s, idle
+  3.6–6.4s) and big saccades carry the blink more often (.6–.7).
+
+Measured on the probe (mean of three seeds, before → after): working/active-
+only micro-saccades 24.6 → 14.3/min, still gaps under 400ms 46% → 35%, centre
+bounces 6.3 → 1.2/min, closures 16.7 → 14.4/min; paired 25 → 14, 45% → 34%,
+4.1 → 2.6, 17.4 → 14.9; completion bounces 2.2 → 0. Authored clips, clocks,
+bags, check gaps and request/listening cadence are unchanged; remaining paired
+bounces are Verify a hunch's authored double glance. The request eye-workload
+max allowance is 111%: Check then ask's exact authored stretch counts 6024
+pixels at zero micro offset on the old kernel too (it was sampled 0.66px off).
+Native-tested and O2-compiled; flashed 2026-11-25 17:42 from the uncommitted
+working tree (app `3a3dc182…`, `-DSTICK_S3_AMBIENT_STARTLE=1`), all four hashes
+verified, bridge reconnected. No readback; no physical timing or appearance review yet.
+
 ## Visual development and independent critique
 
 A different model family, **Claude Sonnet 5.5**, reviewed the design and first

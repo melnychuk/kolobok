@@ -31,6 +31,12 @@ struct Director {
  uint32_t started=0,capturedAt=0,seed=0x8e5b7a19u;
  bool pairReturn=false,quietHold=false,accentActive=false;
  uint32_t accentAt=0;
+ // After an external hold (a counter check) the eyes come back to rest; give
+ // that return a beat before the next clip leaves again, so a check's return
+ // and a clip's departure never fuse into one bounce through the centre.
+ static constexpr uint32_t kHoldSettleMs=900;
+ bool holding=false,settling=false;
+ uint32_t settleUntil=0;
  uint32_t draw() {
   seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;
  }
@@ -182,6 +188,12 @@ struct Director {
    return output;
   }
   if(scripted(next)) {
+   if(hold) holding=true;
+   else if(holding) { holding=false;settling=true;settleUntil=now+kHoldSettleMs; }
+   if(!hold&&settling) {
+    if(pending(now,settleUntil)&&player.index>=0&&player.state==state(next)) hold=true;
+    else settling=false;
+   }
    const bool due=player.index<0||player.state!=state(next)||
        (!hold&&now-player.started>=eye_acting::duration(eye_acting::clip(player.state,player.index))+player.pause);
    // Draw only at clip boundaries: frame cadence/life/check RNG never consume

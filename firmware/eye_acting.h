@@ -455,6 +455,10 @@ struct Player {
  bool calm=false;
  // Between clips: the authored performance finished and the pause is running.
  bool resting(uint32_t now) const { return index>=0 && now-started>=duration(clip(state,index)); }
+ // How long the current rest has lasted (0 while a clip performs).
+ uint32_t restAge(uint32_t now) const {
+  return resting(now)?now-started-duration(clip(state,index)):0;
+ }
  // `hold` keeps the current clip's resting pose (e.g. during a counter check)
  // instead of starting the next clip; a state change still interrupts.
  void update(State next,uint32_t now,uint32_t randomValue,bool hold=false) {
