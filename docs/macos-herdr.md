@@ -8,7 +8,7 @@ held-button audio is discarded in memory, with no ASR, recording, upload, or inp
 ## Quick install
 
 ```sh
-curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash
+curl -fsSL https://melnychuk.github.io/kolobok/install.sh | bash
 ```
 
 The installer runs the read-only check below, then installs a LaunchAgent

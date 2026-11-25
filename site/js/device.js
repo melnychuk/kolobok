@@ -405,7 +405,7 @@ export class Device {
     g.fill();
     g.fillStyle = "#111";
     g.font = `800 40px "Bricolage Grotesque", system-ui, sans-serif`;
-    g.fillText("Agent Herdr", 560, 360);
+    g.fillText("Kolobok", 560, 360);
     g.fillStyle = "#666";
     g.font = `500 28px "JetBrains Mono", monospace`;
     g.fillText("One glance and you’ll know", 560, 410);

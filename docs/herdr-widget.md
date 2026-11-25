@@ -2,7 +2,7 @@
 
 The Stick sits just above **Agents** in the left sidebar. The eyes, Roman
 numerals, and count transitions are rendered together, live, by the same
-WebAssembly binary as the [Stick site](https://melnychuk.github.io/stick-s3/).
+WebAssembly binary as the [Stick site](https://melnychuk.github.io/kolobok/).
 The image fits within **120 × 67.5 logical pixels** in a **76 px** slot and
 shrinks with the sidebar. At 2× Retina scale, that is the Stick's native
 240 × 135-pixel size. The renderer uses Herdr's sidebar color so the background blends

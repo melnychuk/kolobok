@@ -28,7 +28,7 @@ The quickest way is the installer, which does the steps below for you
 (`--dictation` adds the speech model, `--help` lists options):
 
 ```sh
-curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash
+curl -fsSL https://melnychuk.github.io/kolobok/install.sh | bash
 ```
 
 By hand:

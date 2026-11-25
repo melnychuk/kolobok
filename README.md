@@ -1,9 +1,9 @@
-# Copilot Stick S3
+# Kolobok
 
 A tiny desk buddy for your coding agents: an M5Stack StickS3 that shows when
 your GitHub Copilot CLI and Herdr agents are working, need you, or are done.
 Live demo with the real firmware renderer compiled to WebAssembly:
-<https://melnychuk.github.io/stick-s3/>.
+<https://melnychuk.github.io/kolobok/>.
 
 - **Blue, left:** active tasks, as Roman numerals. A new one drops in from the top.
 - **Green, right:** unread completions. A finished task charges, bursts and flips across.
@@ -61,13 +61,13 @@ Easiest: paste this into your coding agent (Copilot CLI, Pi, …). The
 flashing or using sudo, run the installer and verify the Stick with you:
 
 ```text
-Set up my Copilot Stick S3 using https://melnychuk.github.io/stick-s3/install.md
+Set up Kolobok using https://melnychuk.github.io/kolobok/install.md
 ```
 
 Or, on Linux or macOS, one line installs the bridge as a login service (no sudo):
 
 ```sh
-curl -fsSL https://melnychuk.github.io/stick-s3/install.sh | bash
+curl -fsSL https://melnychuk.github.io/kolobok/install.sh | bash
 ```
 
 Add options after `bash -s --`: `--flash` also flashes the latest prebuilt

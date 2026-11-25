@@ -1,6 +1,6 @@
-# Install Agent Herdr — instructions for a coding agent
+# Install Kolobok — instructions for a coding agent
 
-You are helping a person set up **Agent Herdr** on an M5Stack StickS3. It reads
+You are helping a person set up **Kolobok** on an M5Stack StickS3. It reads
 status from Herdr, so there’s no requirement to use a specific coding agent or
 model provider. The Stick shows when agents are working (blue), finished (green),
 or need you (yellow), opens the next task on a key press and, on Linux, takes
@@ -10,9 +10,9 @@ The heavy lifting is done by a tested installer script. Your job is to check
 the machine, explain the choices, get the person's consent where needed, run
 the script with the right options, and verify the result with them.
 
-- Project: <https://github.com/melnychuk/stick-s3> (MIT)
-- Installer: <https://melnychuk.github.io/stick-s3/install.sh>
-- Site with a live demo: <https://melnychuk.github.io/stick-s3/>
+- Project: <https://github.com/melnychuk/kolobok> (MIT)
+- Installer: <https://melnychuk.github.io/kolobok/install.sh>
+- Site with a live demo: <https://melnychuk.github.io/kolobok/>
 
 ## Ground rules
 
@@ -92,7 +92,7 @@ Download it first so you can show what will run, then execute it with the
 chosen options, for example:
 
 ```sh
-curl -fsSL https://melnychuk.github.io/stick-s3/install.sh -o /tmp/stick-s3-install.sh
+curl -fsSL https://melnychuk.github.io/kolobok/install.sh -o /tmp/stick-s3-install.sh
 bash /tmp/stick-s3-install.sh --help
 bash /tmp/stick-s3-install.sh --dictation          # Linux, bridge + dictation
 bash /tmp/stick-s3-install.sh --flash --yes        # after consent: bridge + firmware

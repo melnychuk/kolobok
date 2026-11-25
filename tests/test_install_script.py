@@ -244,7 +244,7 @@ class AgentGuideTest(unittest.TestCase):
 
     def test_site_prompt_points_at_the_guide(self):
         page = (ROOT / "site/index.html").read_text()
-        self.assertGreaterEqual(page.count("https://melnychuk.github.io/stick-s3/install.md"), 2)
+        self.assertGreaterEqual(page.count("https://melnychuk.github.io/kolobok/install.md"), 2)
 
 
 if __name__ == "__main__":

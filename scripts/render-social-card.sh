@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Re-render site/social-card.png, the 1200x630 link preview (og:image) that
-# Teams, Slack, X and friends show for https://melnychuk.github.io/stick-s3/.
+# Teams, Slack, X and friends show for https://melnychuk.github.io/kolobok/.
 # Needs a Chromium-family browser and network access for the Google Fonts.
 # Run after ./scripts/build-site-wasm.sh when the face or copy changes.
 set -euo pipefail
