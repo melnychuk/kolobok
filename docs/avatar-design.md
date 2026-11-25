@@ -767,6 +767,47 @@ the face stays positive throughout. Other states ignore `calm`.
 
 Physical appearance, cadence and DMA behaviour unverified.
 
+## Natural happy eyes, per-eye acting and gaze perspective
+
+The closed happy `^ ^` arches, the deep crescent smile and the flat wink read
+as emoji. The scene now draws `eye_raster::Style::natural`
+(`avatar_scene::kEyeStyle`); `Style::legacy` stays the raster default so the
+frozen parity oracles keep checking the old kernel exactly.
+
+- **Smiles** cut a shallower cheek (`.56h`/`.20h` instead of `.78h`/`.32h`),
+  relax the upper lid by `smile*.10`, and round the cheek/eye corners with a
+  polynomial smooth max (width `min(5, 12*smile)`px). Interior spans tighten
+  by its `width/4` bound, so span and per-pixel output stay identical.
+- **Happy closures** are a tapered crease seated lower in the eye (centre
+  `+.05h`, corners `+.13h`, half-thickness `.55+.045h*(1-nx^2)`): thick in the
+  middle, fine at the corners, instead of a uniform 4px stroked arch. Plain
+  blinks, lids and non-smiling closures are pixel-identical to legacy.
+- **Gaze perspective** (`avatar_scene::viewed`): at render time the eye on
+  the gaze side shrinks and the far eye grows by `0.3%` per px of gaze x,
+  capped at `±4.5%`. It applies to every composed pose (clips, checks, cues,
+  life, wave bars) and is exactly neutral at `x == 0`. Authored per-eye scale
+  adds on top, so clips never author look-direction sizing themselves.
+- **Acting** (same 30 clips, same durations; `eye_acting::shape()` adds
+  per-eye scale/lower lids/slant to constexpr keys). Completion keeps no
+  upper lids or slant; happiness lives in cheeks (smile + lower lids) and
+  creases. Relief is now an exhale (slow close while the body settles); the
+  winks (clip and button) scrunch the winking eye to .92, enlarge the open
+  eye to 1.05 and tip the head into the wink; warm smile closes one eye just
+  ahead of the other; double blink became two dipping squeezes. Thinking adds
+  concentration lower lids (read, focus, ponder, calculate with a tick-tock
+  tilt) and raised-brow asymmetry (verify, untangle). Requests: a squint on
+  the double-take side looks before the wide pop, a quizzical one-big/one-
+  lidded question tilt, and pleading outer-corner droop (slant -.32/-.38).
+
+Guards: `test_eye_shapes` (both styles: scalar/span parity, legacy identity
+for non-happy poses, crease taper/curve/seat), `test_eye_pass` (natural
+spans), `test_avatar` (completion has no slant; bounded per-eye fields;
+perspective sign/cap/neutrality; wink scrunch), and `test_eye_life`, whose
+workload now renders exactly as the scene does (vertical mean 4227 vs 4252
+baseline; max unchanged). Frozen-oracle tests compare clip poses on the
+fields those kernels model. Flashed with hashes verified; physical
+appearance and timing not yet reviewed.
+
 ## Visual development and independent critique
 
 A different model family, **Claude Sonnet 5.5**, reviewed the design and first

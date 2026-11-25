@@ -117,6 +117,9 @@ int main() {
     assert(pose.closeL>=0&&pose.closeL<=1&&pose.closeR>=0&&pose.closeR<=1);
     assert(pose.smile>=0&&pose.smile<=1);
     if(state==1)assert(pose.upperL==0&&pose.upperR==0); // No angry/sad completion lids.
+    if(state==1)assert(pose.slantL==0&&pose.slantR==0);  // Nor slanted (sad/stern) ones.
+    assert(pose.lowerL>=0&&pose.lowerL<=.3f&&pose.lowerR>=0&&pose.lowerR<=.3f);
+    assert(fabsf(pose.scaleL)<=.08f&&fabsf(pose.scaleR)<=.08f);
     avatar_scene::Scene scene;
     scene.eyes=pose;scene.body=sample(c,ms>90?ms-90:0);
     scene.eyeWidth=50*pose.width;scene.eyeHeight=(state==2?fmaxf(48,44*pose.height):56*pose.height);
@@ -221,6 +224,26 @@ int main() {
  float leftInk=0,rightInk=0;
  eye_raster::render(120,68,50,56,19,winkPose,[&](int x,int,float a){if(x<120)leftInk+=a;else rightInk+=a;});
  assert(leftInk<rightInk*.15f);
+ // Sideways looks: the eye on the gaze side recedes, the far one comes nearer.
+ // Exactly neutral when centred; bounded; mirrored; authored scale adds.
+ {
+  const Pose centred=avatar_scene::viewed(p());
+  assert(centred.scaleL==0&&centred.scaleR==0);
+  const Pose left=avatar_scene::viewed(p(-12)),right=avatar_scene::viewed(p(12));
+  assert(left.scaleR>0&&left.scaleL<0&&left.scaleR==-left.scaleL);
+  assert(right.scaleL==left.scaleR&&right.scaleR==left.scaleL);
+  assert(left.scaleR>.03f&&avatar_scene::viewed(p(-500)).scaleR==avatar_scene::kGazePerspectiveMax);
+  float nearInk=0,farInk=0;
+  eye_raster::render(120,68,50,45,19,left,[&](int x,int,float a){(x<120?farInk:nearInk)+=a;});
+  assert(nearInk>farInk*1.1f);
+ }
+ // A real wink scrunches the winking eye smaller than the open one.
+ {
+  const auto& w=clip(State::done,4);
+  assert(strcmp(w.name,"Playful wink")==0);
+  const Pose held=sample(w,600);
+  assert(held.closeL==1&&held.closeR==0&&held.scaleL<held.scaleR&&held.smile>=.5f);
+ }
  // Closed happy eyes curve upward, whereas neutral blinks remain flat.
  Pose happy=p(0,0,1,1,0,0,.6f,1,1);
  float centerY=0,centerWeight=0,outerY=0,outerWeight=0;

@@ -21,6 +21,13 @@ void checkSpans(const avatar_scene::Mask& mask) {
  }
 }
 
+// Frozen oracles predate per-eye shaping (scale/lower lids/slant), which clips
+// now author; compare their kernels on the fields they model. Shaped poses
+// are covered by test_eye_shapes (scalar/span parity, workload guard).
+inline eye_acting::Pose legacyFields(eye_acting::Pose pose) {
+ pose.scaleL=pose.scaleR=pose.lowerL=pose.lowerR=pose.slantL=pose.slantR=0;
+ return pose;
+}
 int main() {
  unsigned comparisons=0;
  for(int mode=0;mode<6;++mode) {
@@ -45,7 +52,7 @@ int main() {
   eye_acting::Player player;player.state=static_cast<eye_acting::State>(state);player.index=clip;
   for(unsigned ms=0;ms<4000;ms+=137) {
    std::vector<float> actual(240*135,0),expected(240*135,0);
-   const auto pose=player.eyes(ms);
+   const auto pose=legacyFields(player.eyes(ms));
    const float width=50*pose.width,height=56*pose.height;
    eye_raster::render(120,67.5f,width,height,19,pose,[&](int x,int y,float a) {
     if(x>=0&&x<240&&y>=0&&y<135)actual[y*240+x]=a;

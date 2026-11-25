@@ -5,9 +5,11 @@
 // No task mutation or audio analysis belongs in this visual kernel.
 namespace avatar_interaction {
 constexpr eye_acting::Key tapKeys[] = {
- {0,eye_acting::p()}, {180,eye_acting::p(-12,3,1.05f,1.08f,0,0,.65f,0,0,1.04f,1.03f,-4,1,.7f)},
- {340,eye_acting::p(-12,3,1.05f,1.08f,0,0,.65f,1,0,1.04f,1.03f,-4,1,.7f)},
- {520,eye_acting::p(-12,3,1.05f,1.08f,0,0,.65f)},
+ {0,eye_acting::p()},
+ {180,eye_acting::shape(eye_acting::p(-12,3,1.05f,1.08f,0,0,.6f,0,0,1.04f,1.03f,-4,1,.7f,-2),1,1,.06f,0)},
+ // The winking eye scrunches as its cheek lifts; the head tips into it.
+ {340,eye_acting::shape(eye_acting::p(-12,4,1.05f,1.08f,0,0,.6f,1,0,1.04f,1.03f,-5,2,.7f,-5),.92f,1.05f,0,.10f)},
+ {520,eye_acting::shape(eye_acting::p(-12,3,1.05f,1.08f,0,0,.62f,0,0,1.04f,1.03f,-4,1,.7f,-1),1,1,.10f,.10f)},
  {800,eye_acting::p(0,-2,1,1.08f,0,0,.45f)}, {1200,eye_acting::p()} };
 constexpr eye_acting::Key releaseKeys[] = {
  {0,eye_acting::p(0,-2,1,1.08f)}, {230,eye_acting::p(0,4,1.04f,1.02f,0,0,.3f,0,0,1.04f,.98f,0,2,.5f)},

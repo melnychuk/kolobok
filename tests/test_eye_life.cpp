@@ -35,9 +35,11 @@ Workload workload(int layout) {
    spring.step(dt,50*eyes.width,fmaxf(avatar_scene::kRequestEyeFloor*scene.alert,scene.awakeHeight*eyes.height));
    scene.eyeWidth=spring.width;scene.eyeHeight=spring.height;
    unsigned long count=0;
+   // Exactly what the scene draws: gaze perspective and the natural style.
    eye_raster::render(120+eyes.x,avatar_scene::eyeBaseline(scene.corners,scene.alert,0)+eyes.y,
-                      scene.eyeWidth,avatar_scene::renderedEyeHeight(scene),scene.gap,eyes,
-                      [&](int,int,float){++count;},avatar_scene::kBlinkSink,avatar_scene::kBlinkWiden);
+                      scene.eyeWidth,avatar_scene::renderedEyeHeight(scene),scene.gap,
+                      avatar_scene::viewed(eyes),[&](int,int,float){++count;},
+                      avatar_scene::kBlinkSink,avatar_scene::kBlinkWiden,avatar_scene::kEyeStyle);
    if(count>result.max)result.max=count;
    result.total+=count;++result.frames;
   }

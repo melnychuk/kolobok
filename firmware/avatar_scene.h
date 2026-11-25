@@ -653,6 +653,19 @@ inline float renderedEyeHeight(const Scene& scene) {
 // Cartoon blink: the closing lid sinks toward the eye's lower edge and the
 // closed line widens a little. Pose-independent constants; plain blinks only.
 constexpr float kBlinkSink=.22f,kBlinkWiden=.06f;
+// Smiling squint and tapered happy crease (eye_raster::Style); the legacy
+// crescent/arch remains the raster default for the frozen parity oracles.
+constexpr eye_raster::Style kEyeStyle=eye_raster::Style::natural;
+// Sideways looks turn the face a touch: the eye on the gaze side recedes and
+// the other comes nearer, so it renders slightly larger. Derived from the
+// final composed gaze (clips, checks, cues and life alike) at render time;
+// authored per-eye scale adds on top. Exactly neutral at x == 0.
+constexpr float kGazePerspective=.003f,kGazePerspectiveMax=.045f;
+inline ActingPose viewed(ActingPose pose) {
+ const float d=eye_raster::clamp(pose.x*kGazePerspective,-kGazePerspectiveMax,kGazePerspectiveMax);
+ pose.scaleL+=d;pose.scaleR-=d;
+ return pose;
+}
 inline void setWave(Scene& scene,const listen_wave::Wave& wave) {
  scene.wave=wave.amount;
  for(int i=0;i<listen_wave::kBars;++i)scene.waveBars[i]=wave.bar(i);
@@ -660,7 +673,7 @@ inline void setWave(Scene& scene,const listen_wave::Wave& wave) {
 // First part of the listening morph: the eyes close into the blink line
 // (smile/lids fading with the closure so the line is the plain one).
 inline ActingPose waveClosing(const Scene& scene) {
- ActingPose pose=scene.eyes;
+ ActingPose pose=viewed(scene.eyes);
  const float close=listen_wave::unit(scene.wave/listen_wave::kClose);
  pose.closeL=fmaxf(pose.closeL,close);pose.closeR=fmaxf(pose.closeR,close);
  pose.smile*=1-close;
@@ -669,7 +682,7 @@ inline ActingPose waveClosing(const Scene& scene) {
 // Second part: bars from that line, clipped to the face like the eyes.
 template<class Pixel>
 void waveBars(const Scene& scene,const Mask& mask,Pixel pixel) {
- const auto& e=scene.eyes;
+ const auto e=viewed(scene.eyes);
  const auto scale=[](float delta){return eye_raster::clamp(1+delta,.75f,1.25f);};
  listen_wave::bars(scene.eyeX+scene.counterShift+scene.away,eyeCenterY(scene),scene.eyeWidth*scene.counterScale,
      renderedEyeHeight(scene),scene.gap*scene.counterScale,scene.wave,scale(e.scaleL),scale(e.scaleR),
@@ -687,10 +700,10 @@ void eyes(const Scene& scene,const Mask& mask,Pixel pixel) {
  if(scene.wave>=listen_wave::kClose) { waveBars(scene,mask,pixel);return; }
  eye_raster::render(scene.eyeX+scene.counterShift+scene.away,eyeCenterY(scene),scene.eyeWidth*scene.counterScale,
                     renderedEyeHeight(scene),scene.gap*scene.counterScale,
-                    scene.wave>0?waveClosing(scene):scene.eyes,[&](int x,int y,float alpha) {
+                    scene.wave>0?waveClosing(scene):viewed(scene.eyes),[&](int x,int y,float alpha) {
   const float coverage=mask.baseCoverage(x,y);
   if(coverage>0)pixel(x,y,alpha*coverage);
- },kBlinkSink,kBlinkWiden);
+ },kBlinkSink,kBlinkWiden,kEyeStyle);
 }
 // Span variant: interior eye runs fully inside the face arrive as fill(x,y,n);
 // everything else, including runs crossing the face edge, stays per-pixel and
@@ -704,7 +717,7 @@ void eyes(const Scene& scene,const Mask& mask,Pixel pixel,Fill fill) {
  if(scene.wave>=listen_wave::kClose) { waveBars(scene,mask,pixel);return; }
  eye_raster::render(scene.eyeX+scene.counterShift+scene.away,eyeCenterY(scene),scene.eyeWidth*scene.counterScale,
                     renderedEyeHeight(scene),scene.gap*scene.counterScale,
-                    scene.wave>0?waveClosing(scene):scene.eyes,edge,[&](int x,int y,int length) {
+                    scene.wave>0?waveClosing(scene):viewed(scene.eyes),edge,[&](int x,int y,int length) {
   const bool row=y>=0&&y<135&&x>=0&&x+length<=240&&x>=mask.left[y]&&x+length<=mask.right[y];
   int run=-1;
   for(int i=x;i<x+length;++i) {
@@ -713,7 +726,7 @@ void eyes(const Scene& scene,const Mask& mask,Pixel pixel,Fill fill) {
    edge(i,y,1);
   }
   if(run>=0)fill(run,y,x+length-run);
- },kBlinkSink,kBlinkWiden);
+ },kBlinkSink,kBlinkWiden,kEyeStyle);
 }
 template<class Pixel>
 void eyes(const Scene& scene,Pixel pixel) {

@@ -5,12 +5,13 @@
 #include "../firmware/eye_raster.h"
 #include "../firmware/avatar_director.h"
 struct Pixel { int x,y;float a; };
-static std::vector<Pixel> raster(const eye_acting::Pose& pose,bool spans) {
+static std::vector<Pixel> raster(const eye_acting::Pose& pose,bool spans,
+                                 eye_raster::Style style=eye_raster::Style::legacy) {
  std::vector<Pixel> result;
  auto pixel=[&](int x,int y,float a){assert(isfinite(a)&&a>0&&a<=1);result.push_back({x,y,a});};
  if(spans)eye_raster::render(120,67,50,45.36f,19,pose,pixel,
-     [&](int x,int y,int n){for(int i=0;i<n;++i)pixel(x+i,y,1);},.22f,.06f);
- else eye_raster::render(120,67,50,45.36f,19,pose,pixel,.22f,.06f);
+     [&](int x,int y,int n){for(int i=0;i<n;++i)pixel(x+i,y,1);},.22f,.06f,style);
+ else eye_raster::render(120,67,50,45.36f,19,pose,pixel,.22f,.06f,style);
  return result;
 }
 int main() {
@@ -21,13 +22,48 @@ int main() {
   auto p=eye_acting::withSlant(eye_acting::withLowerLids(
       eye_acting::withEyeScale(eye_acting::p(),scale,2-scale),lower,lower*.5f),slant,-slant*.5f);
   p.tilt=tilt;p.closeL=closure;p.closeR=closure*.6f;p.smile=smile;
-  const auto scalar=raster(p,false),spans=raster(p,true);
-  assert(scalar.size()==spans.size());
-  for(unsigned i=0;i<scalar.size();++i)
-   assert(scalar[i].x==spans[i].x&&scalar[i].y==spans[i].y&&scalar[i].a==spans[i].a);
+  for(auto style: {eye_raster::Style::legacy,eye_raster::Style::natural}) {
+   const auto scalar=raster(p,false,style),spans=raster(p,true,style);
+   assert(scalar.size()==spans.size());
+   for(unsigned i=0;i<scalar.size();++i)
+    assert(scalar[i].x==spans[i].x&&scalar[i].y==spans[i].y&&scalar[i].a==spans[i].a);
+  }
   ++cases;
  }
  assert(cases==486);
+ // Natural style: neutral, lidded and plain-blink poses are untouched; only
+ // smiles (shallower, rounded cheek) and happy closures (tapered crease) move.
+ {
+  using eye_raster::Style;
+  auto lidded=eye_acting::p(3,-2,1,1,.2f,.1f);lidded.closeL=.6f;
+  for(const auto& pose: {eye_acting::p(),lidded,eye_acting::p(0,0,1,1,0,0,0,1,1)}) {
+   const auto a=raster(pose,false,Style::legacy),b=raster(pose,false,Style::natural);
+   assert(a.size()==b.size());
+   for(unsigned i=0;i<a.size();++i)assert(a[i].x==b[i].x&&a[i].y==b[i].y&&a[i].a==b[i].a);
+  }
+  // A natural smile keeps more of the eye than the legacy crescent.
+  const auto ink=[](const std::vector<Pixel>& v){float sum=0;for(const auto& p:v)sum+=p.a;return sum;};
+  const auto smiling=eye_acting::p(0,0,1,1,0,0,.65f);
+  assert(ink(raster(smiling,false,Style::natural))>ink(raster(smiling,false,Style::legacy))*1.1f);
+  // Happy crease: thicker at the centre than the corners, centre above the
+  // corners (still a happy upward curve), and seated lower than the legacy arch.
+  const auto closed=eye_acting::p(0,0,1,1,0,0,.6f,1,1);
+  const auto stats=[&](Style style,float& centreY,float& cornerY,float& centreInk,float& cornerInk) {
+   float cy=0,cw=0,oy=0,ow=0;
+   for(const auto& p: raster(closed,false,style)) {
+    if(p.x>=120)continue;
+    const float dx=fabsf(p.x+.5f-85.5f);
+    if(dx<3){cy+=(p.y+.5f)*p.a;cw+=p.a;}
+    if(dx>17&&dx<21){oy+=(p.y+.5f)*p.a;ow+=p.a;}
+   }
+   assert(cw>0&&ow>0);centreY=cy/cw;cornerY=oy/ow;centreInk=cw/6;cornerInk=ow/8;
+  };
+  float nC,nO,nCi,nOi,lC,lO,lCi,lOi;
+  stats(Style::natural,nC,nO,nCi,nOi);stats(Style::legacy,lC,lO,lCi,lOi);
+  assert(nO-nC>2&&nCi>nOi*1.5f);           // curved and tapered
+  assert(fabsf(lCi-lOi)<lCi*.25f);         // legacy: uniform stroke
+  assert(nC>lC+3);                          // seated lower in the eye
+ }
  const auto base=raster(eye_acting::p(),false);
  const auto larger=raster(eye_acting::withEyeScale(eye_acting::p(),1.04f,1),false);
  float baseL=0,baseR=0,largeL=0,largeR=0;

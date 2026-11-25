@@ -13,6 +13,13 @@ struct Pixel {
   return x==other.x && y==other.y && alpha==other.alpha;
  }
 };
+// Frozen oracles predate per-eye shaping (scale/lower lids/slant), which clips
+// now author; compare their kernels on the fields they model. Shaped poses
+// are covered by test_eye_shapes (scalar/span parity, workload guard).
+inline eye_acting::Pose legacyFields(eye_acting::Pose pose) {
+ pose.scaleL=pose.scaleR=pose.lowerL=pose.lowerR=pose.slantL=pose.slantR=0;
+ return pose;
+}
 unsigned long comparisons=0,spanPixels=0,spanTotal=0;
 volatile float benchmarkSink=0;
 void check(float cx,float cy,float width,float height,float gap,const eye_acting::Pose& pose) {
@@ -43,6 +50,15 @@ void check(float cx,float cy,float width,float height,float gap,const eye_acting
                     [&](int x,int y,int n){for(int i=0;i<n;++i)shapedSpans.push_back({x+i,y,1});},
                     avatar_scene::kBlinkSink,avatar_scene::kBlinkWiden);
  assert(shaped==shapedSpans);comparisons+=shaped.size();
+ // The production (natural) style: rounded cheek corners tighten interior
+ // spans by the smooth-max bound, so spans must still reproduce per-pixel.
+ std::vector<Pixel> natural,naturalSpans;
+ eye_raster::render(cx,cy,width,height,gap,pose,[&](int x,int y,float a){natural.push_back({x,y,a});},
+                    avatar_scene::kBlinkSink,avatar_scene::kBlinkWiden,avatar_scene::kEyeStyle);
+ eye_raster::render(cx,cy,width,height,gap,pose,[&](int x,int y,float a){naturalSpans.push_back({x,y,a});},
+                    [&](int x,int y,int n){for(int i=0;i<n;++i)naturalSpans.push_back({x+i,y,1});},
+                    avatar_scene::kBlinkSink,avatar_scene::kBlinkWiden,avatar_scene::kEyeStyle);
+ assert(natural==naturalSpans);comparisons+=natural.size();
 }
 int main(int argc,char** argv) {
  avatar_scene::Scene scene;
@@ -67,7 +83,7 @@ int main(int argc,char** argv) {
   eye_acting::Player actor;actor.state=static_cast<eye_acting::State>(state);actor.index=clip;
   const auto& performance=eye_acting::clip(actor.state,clip);
   for(unsigned ms=0;ms<=eye_acting::duration(performance)+700u;ms+=137) {
-   const auto pose=actor.eyes(ms);
+   const auto pose=legacyFields(actor.eyes(ms));
    for(float scale:{1.0f,.9f,.81f}) {
     check(120+pose.x,67.5f+pose.y,50*pose.width,56*pose.height*scale,19,pose);
     check(119.3f+pose.x,88.5f+pose.y,36*pose.width,fmaxf(48,44*pose.height*scale),12,pose);
