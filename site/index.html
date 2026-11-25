@@ -78,7 +78,10 @@
         <figure class="stage-menubar" aria-hidden="true">
           <div class="mb-screen">
             <div class="mb-bar">
-              <svg class="mb-apple" viewBox="0 0 20 24"><defs><mask id="mb-apple-bite"><rect width="20" height="24" fill="#fff"/><circle cx="20.6" cy="12.4" r="3.6" fill="#000"/></mask></defs><g fill="currentColor"><path mask="url(#mb-apple-bite)" d="M10 8.3C8.6 7.3 7 6.9 5.6 7.2 2.9 7.8 1.3 10.3 1.5 13.5 1.7 17.5 4.2 22.6 7 22.6c1.2 0 1.8-.6 3-.6s1.8.6 3 .6c2.8 0 5.3-5.1 5.5-9.1.2-3.2-1.4-5.7-4.1-6.3C13 6.9 11.4 7.3 10 8.3z"/><path d="M10.2 6.6C10 4.3 11.7 2.1 14.1 1.7 14.3 4 12.6 6.2 10.2 6.6z"/></g></svg>
+              <!-- Apple's own fonts carry its logo at U+F8FF; js/menubar.js shows it
+                   on Apple platforms, and the drawn apple stands in elsewhere. -->
+              <span class="mb-apple-glyph">&#xF8FF;</span>
+              <svg class="mb-apple" viewBox="0 0 20 24"><defs><mask id="mb-apple-bite"><rect width="20" height="24" fill="#fff"/><circle cx="22.2" cy="12.9" r="5.6" fill="#000"/></mask></defs><g fill="currentColor"><path mask="url(#mb-apple-bite)" d="M10 8.3C8.6 7.3 7 6.9 5.6 7.2 2.9 7.8 1.3 10.3 1.5 13.5 1.7 17.5 4.2 22.6 7 22.6c1.2 0 1.8-.6 3-.6s1.8.6 3 .6c2.8 0 5.3-5.1 5.5-9.1.2-3.2-1.4-5.7-4.1-6.3C13 6.9 11.4 7.3 10 8.3z"/><path d="M10.2 6.6C10 4.3 11.7 2.1 14.1 1.7 14.3 4 12.6 6.2 10.2 6.6z"/></g></svg>
               <span class="mb-extras">
                 <span class="mb-item"><img class="mb-baa" src="media/baa/idle.png" width="40" height="36" alt=""></span>
                 <svg class="mb-wifi" viewBox="0 0 24 18"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2.5 6.7a13.5 13.5 0 0 1 19 0"/><path d="M6.2 10.4a8.3 8.3 0 0 1 11.6 0"/></g><path fill="currentColor" d="M12 17.2l-3.4-3.5a4.8 4.8 0 0 1 6.8 0z"/></svg>

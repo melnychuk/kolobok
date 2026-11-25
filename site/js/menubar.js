@@ -61,6 +61,9 @@ export function menubarScene(figure) {
   const pointer = figure.querySelector(".mb-pointer");
   const src = (frame) => `media/baa/${frame}.png`;
   let loaded = false;
+  // Only Apple's fonts have its logo (U+F8FF); elsewhere keep the drawn apple.
+  const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
+  screen.classList.toggle("apple-glyph", /mac|iphone|ipad|ipod/i.test(platform));
 
   function show(frame) {
     icon.src = src(frame);

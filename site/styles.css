@@ -101,6 +101,9 @@ body::after {
   font: 500 calc(13px * var(--z)) / 1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 .mb-apple { display: block; width: calc(14px * var(--z)); height: auto; flex: none; }
+.mb-apple-glyph { display: none; flex: none; font: calc(17px * var(--z)) / 1 -apple-system, BlinkMacSystemFont, sans-serif; }
+.mb-screen.apple-glyph .mb-apple-glyph { display: block; }
+.mb-screen.apple-glyph .mb-apple { display: none; }
 .mb-extras { display: flex; align-items: center; gap: calc(11px * var(--z)); flex: none; }
 /* The status item, highlighted like macOS while its menu is open. */
 .mb-item {
@@ -110,15 +113,16 @@ body::after {
 .mb-item.is-open { background: #ffffff38; }
 .mb-baa { display: block; width: auto; height: calc(18px * var(--z)); image-rendering: pixelated; }
 .mb-wifi { display: block; width: calc(17px * var(--z)); height: auto; }
+/* Today's macOS battery: a translucent body, the charge filled flush inside it, and a small cap. */
 .mb-battery {
-  position: relative; box-sizing: border-box; width: calc(24px * var(--z)); height: calc(11.5px * var(--z));
-  padding: calc(1.5px * var(--z)); border: calc(1px * var(--z)) solid #ffffffa6; border-radius: calc(3.5px * var(--z));
+  position: relative; box-sizing: border-box; width: calc(25px * var(--z)); height: calc(12px * var(--z));
+  border-radius: calc(4px * var(--z)); background: #ffffff4d; overflow: visible;
 }
 .mb-battery::after {
   content: ""; position: absolute; top: 50%; left: 100%; translate: calc(1px * var(--z)) -50%;
-  width: calc(1.5px * var(--z)); height: calc(4px * var(--z)); border-radius: 0 9px 9px 0; background: #ffffffa6;
+  width: calc(1.5px * var(--z)); height: calc(4px * var(--z)); border-radius: 0 9px 9px 0; background: #ffffff4d;
 }
-.mb-battery i { display: block; width: 78%; height: 100%; border-radius: calc(1.5px * var(--z)); background: #fff; }
+.mb-battery i { display: block; width: 78%; height: 100%; border-radius: calc(4px * var(--z)) 0 0 calc(4px * var(--z)); background: #fff; }
 .mb-state {
   position: absolute; inset: calc(24px * var(--z)) 0 0 0; display: grid; place-items: center; margin: 0;
   font: 600 clamp(20px, 2.4vw, 30px) / 1.2 var(--display); color: #fff; text-shadow: 0 2px 18px #0008;
