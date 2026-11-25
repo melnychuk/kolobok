@@ -20,7 +20,9 @@ update immediately; demo mode never contacts the bridge or Herdr.
 
 As on the Stick, the face acts out the status and colored sides show it: active
 work on the left in blue, unread completions on the right in green. The sides
-wrap the face's outline, separated from it by a one-point moat.
+wrap the face's outline, separated from it by a one-point moat, and are two
+points shorter than the face, so it stands a point proud of them above and
+below.
 
 | State | Menu-bar cue |
 | --- | --- |
@@ -39,12 +41,26 @@ shows the menu bar behind it and matches the eyes. The `!` steps between the
 Stick's request yellow and orange. Open eyes blink every few seconds.
 
 A new completion plays a short version of the Stick's transfer cue: the blue
-side charges with green light, flickering faster and faster, the eyes fly open
-in fright, then green wipes across the face from the charged side, its edge
-breaking into flickering tongues like a burst, while the eyes squeeze shut,
-until the icon is solid green, and the face comes back happy (about 1.4
-seconds). Without active work before it, the face is startled straight away.
-None of this animates if macOS **Reduce motion** is on.
+side charges with green light, flickering faster and faster; the face jumps,
+eyes flying open in fright; a green starburst spins out from the charged side
+along the sides' 14-point band, its rays cutting the face away above and below
+the band while the eyes squeeze shut, until the face is gone and the band is
+one solid green bar. Then the face peeks back in from the left, one eye on the
+green, blinks, crouches and hops home onto the bar, landing squashed and happy.
+If work is still active, the face drops in from above instead of crossing the
+blue: it peeks down at its home, blinks, braces and falls onto the bar, which
+blends from the blue side into green (with both sides showing, the charge
+blends from blue into green too). It all takes about 2.5 seconds. Without
+active work before it, the face is startled straight away. None of this
+animates if macOS **Reduce motion** is on.
+
+The product site's menu bar chapter replays these frames, rendered by a test
+that's skipped unless asked for. After changing the art or the celebration,
+regenerate them on a Mac:
+
+```sh
+BAA_SPRITES_DIR=site/media/baa swift test --package-path menu-bar --filter SiteSprites
+```
 
 Click the avatar for a standard macOS menu of your agents, grouped under their
 Herdr spaces in Herdr's order. Each takes one line: a pane name you set, or

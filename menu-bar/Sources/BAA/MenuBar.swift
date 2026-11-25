@@ -130,42 +130,19 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func drawAvatar(_ snapshot: Snapshot, on button: NSStatusBarButton) {
-        let now = ProcessInfo.processInfo.systemUptime
-        // The old icon until the green covers it, as on the Stick.
-        let before = celebration?.before ?? snapshot
-        let beforeLayout = { AvatarArt.layout(left: before.leftHint, done: before.hasUnreadCompletion) }
-        let layout = { AvatarArt.layout(left: snapshot.leftHint, done: snapshot.hasUnreadCompletion) }
-        switch celebration?.frame(at: now) {
-        case .charge(let lit)?:
-            button.image = AvatarArt.image(before.face, layout: beforeLayout())
-            sides.image = AvatarArt.sides(left: before.leftHint, charged: lit, layout: beforeLayout())
-        case .fright?:
-            // The request face's wide eyes.
-            button.image = AvatarArt.image(.attention, layout: beforeLayout())
-            sides.image = AvatarArt.sides(left: before.leftHint, charged: true, layout: beforeLayout())
-        case .wipe(let progress)?:
-            // Green sweeps across the old icon, from its charged side over the
-            // frightened face, a point at a time, and the eyes squeeze shut.
-            let layout = beforeLayout()
-            let eyes = Celebration.eyes(wiped: progress)
-            button.image = AvatarArt.image(eyes.face, blinking: eyes.blinking, layout: layout)
-            sides.image = AvatarArt.wipe(left: before.leftHint, layout: layout,
-                                         edge: Int((Double(layout.width) * progress).rounded(.up)))
-        case .gone?:
-            // Solid green in the new icon's shape, before the face comes back.
-            button.image = AvatarArt.blank(layout: layout())
-            sides.image = AvatarArt.flash(layout: layout())
-        case .finished?, nil:
-            button.image = AvatarArt.image(snapshot.face, blinking: blinking, layout: layout())
-            sides.image = AvatarArt.sides(left: snapshot.leftHint, attentionPeak: attentionPeak, layout: layout())
-        }
+        let images = StatusIcon.images(for: snapshot, celebration: celebration,
+                                       at: ProcessInfo.processInfo.systemUptime,
+                                       blinking: blinking, attentionPeak: attentionPeak)
+        button.image = images.face
+        sides.image = images.sides
     }
 
-    /// Plays a new completion's charge, fright and wipe. A completion during it
-    /// doesn't replay it; the solid green and final icon show the latest counts.
+    /// Plays a new completion's charge, fright, burst and return. A completion
+    /// during it doesn't replay it; the solid green and the face's return show
+    /// the latest counts.
     private func celebrate(from before: Snapshot) {
         celebration = Celebration(started: ProcessInfo.processInfo.systemUptime, before: before)
-        // Fast enough for the wipe to move a point or so at a time.
+        // Fast enough for the face to move a point or so at a time.
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
             MainActor.assumeIsolated {
                 guard let self, let button = self.item?.button else { return timer.invalidate() }
@@ -239,6 +216,48 @@ final class MenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         blinkTimer = reopen
         RunLoop.main.add(reopen, forMode: .common)
+    }
+}
+
+/// The status item's images for a snapshot at a moment: the template face,
+/// and the colored sides drawn over it. During a completion's celebration,
+/// the old icon until the green covers it, as on the Stick, then the new one.
+@MainActor
+enum StatusIcon {
+    static func images(for snapshot: Snapshot, celebration: Celebration?, at now: TimeInterval,
+                       blinking: Bool = false, attentionPeak: Bool = false) -> (face: NSImage, sides: NSImage?) {
+        let before = celebration?.before ?? snapshot
+        let old = AvatarArt.layout(left: before.leftHint, done: before.hasUnreadCompletion)
+        let new = AvatarArt.layout(left: snapshot.leftHint, done: snapshot.hasUnreadCompletion)
+        switch celebration?.frame(at: now) {
+        case .charge(let lit)?:
+            return (AvatarArt.image(before.face, layout: old),
+                    AvatarArt.sides(left: before.leftHint, charged: lit, layout: old))
+        case .fright(let jumped)?:
+            // The request face's wide eyes, and a jump.
+            let pose = AvatarArt.Pose(lift: jumped ? 1 : 0)
+            return (AvatarArt.image(.attention, layout: old, pose: pose),
+                    AvatarArt.sides(left: before.leftHint, charged: true, layout: old, pose: pose))
+        case .burst(let progress)?:
+            // A green star spins out from the charged side along the sides'
+            // band, blasting away the frightened face, whose eyes squeeze shut.
+            let eyes = Celebration.eyes(bursting: progress)
+            let step = AvatarArt.burstStep(progress)
+            return (AvatarArt.image(eyes.face, blinking: eyes.blinking, layout: old, blast: step),
+                    AvatarArt.burst(left: before.leftHint, layout: old, step: step))
+        case .gone?:
+            // A solid green bar across the new icon, before the face comes back.
+            return (AvatarArt.blank(layout: new), AvatarArt.flash(layout: new))
+        case .back(let beat, let progress)?:
+            // The face peeks back in from the left and hops home onto the bar.
+            let act = Celebration.act(beat, progress, layout: new)
+            return (AvatarArt.image(act.face, blinking: act.blinking, layout: new, pose: act.pose),
+                    AvatarArt.sides(left: snapshot.leftHint, attentionPeak: attentionPeak, layout: new,
+                                    pose: act.pose, wash: act.wash))
+        case .finished?, nil:
+            return (AvatarArt.image(snapshot.face, blinking: blinking, layout: new),
+                    AvatarArt.sides(left: snapshot.leftHint, attentionPeak: attentionPeak, layout: new))
+        }
     }
 }
 

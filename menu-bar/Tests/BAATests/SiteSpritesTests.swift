@@ -2,13 +2,22 @@ import AppKit
 import XCTest
 @testable import BAA
 
-/// Renders the key menu bar frames for the product site (site/js/menubar.js),
-/// as BAA draws them on a dark menu bar: the white face with the status
-/// sides, 2× pixels. Skipped unless asked for:
+/// Renders menu bar frames for the product site (site/js/menubar.js), as BAA
+/// draws them on a dark menu bar: the white face with the status sides, 2×
+/// pixels. Key states by name, and a completion's whole celebration, from
+/// one active task to one done, sampled at 60 fps: each distinct frame as
+/// celebrate-N.png, listed with its start time in celebrate.js. Skipped
+/// unless asked for:
 ///
 ///     BAA_SPRITES_DIR=site/media/baa swift test --package-path menu-bar --filter SiteSprites
 @MainActor
 final class SiteSpritesTests: XCTestCase {
+    private struct Step: Encodable {
+        let frame: String
+        let ms: Int
+        let width: Int
+    }
+
     func testRenderSiteSprites() throws {
         guard let path = ProcessInfo.processInfo.environment["BAA_SPRITES_DIR"] else {
             throw XCTSkip("Set BAA_SPRITES_DIR to render the site's menu bar sprites")
@@ -20,22 +29,12 @@ final class SiteSpritesTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         func icon(_ face: Face, _ left: LeftHint?, done: Bool = false, blinking: Bool = false,
-                  peak: Bool = false, charged: Bool = false) -> (NSImage, NSImage?) {
+                  peak: Bool = false) -> (NSImage, NSImage?) {
             let layout = AvatarArt.layout(left: left, done: done)
             return (AvatarArt.image(face, blinking: blinking, layout: layout),
-                    AvatarArt.sides(left: left, attentionPeak: peak, charged: charged, layout: layout))
+                    AvatarArt.sides(left: left, attentionPeak: peak, layout: layout))
         }
-        let doneLayout = AvatarArt.layout(left: nil, done: true)
-        let workingLayout = AvatarArt.layout(left: .working(1), done: false)
-        // The wipe in quarters: green over the frightened face up to each edge,
-        // with the eyes as they are midway through that quarter.
-        func wipe(_ quarter: Int) -> (NSImage, NSImage?) {
-            let edge = Int((Double(workingLayout.width * quarter) / 4).rounded(.up))
-            let eyes = Celebration.eyes(wiped: (Double(quarter) - 0.5) / 4)
-            return (AvatarArt.image(eyes.face, blinking: eyes.blinking, layout: workingLayout),
-                    AvatarArt.wipe(left: .working(1), layout: workingLayout, edge: edge))
-        }
-        let frames: [(String, (NSImage, NSImage?))] = [
+        let states: [(String, (NSImage, NSImage?))] = [
             ("idle", icon(.idle, nil)),
             ("idle-blink", icon(.idle, nil, blinking: true)),
             ("working-1", icon(.working, .working(1))),
@@ -43,16 +42,33 @@ final class SiteSpritesTests: XCTestCase {
             ("working-2", icon(.working, .working(2))),
             ("attention", icon(.attention, .attention)),
             ("attention-peak", icon(.attention, .attention, peak: true)),
-            ("charge", icon(.working, .working(1), charged: true)),
-            ("fright", icon(.attention, .working(1), charged: true)),
-            ("wipe-1", wipe(1)), ("wipe-2", wipe(2)), ("wipe-3", wipe(3)), ("wipe-4", wipe(4)),
-            ("gone", (AvatarArt.blank(layout: doneLayout), AvatarArt.flash(layout: doneLayout))),
             ("done", icon(.done, nil, done: true))
         ]
-        for (name, (face, sides)) in frames {
+        for (name, (face, sides)) in states {
             let png = try XCTUnwrap(Self.composite(face: face, sides: sides))
             try png.write(to: directory.appendingPathComponent("\(name).png"))
         }
+
+        let celebration = Celebration(started: 0, before: Preview.working.snapshot)
+        var steps: [Step] = []
+        var last: Data?
+        for tick in 0...Int((celebration.length * 60).rounded(.up)) {
+            let now = Double(tick) / 60
+            let images = StatusIcon.images(for: Preview.done.snapshot, celebration: celebration, at: now)
+            let png = try XCTUnwrap(Self.composite(face: images.face, sides: images.sides))
+            guard png != last else { continue }
+            last = png
+            let name = "celebrate-\(steps.count + 1)"
+            try png.write(to: directory.appendingPathComponent("\(name).png"))
+            steps.append(Step(frame: name, ms: Int((now * 1000).rounded()), width: Int(images.face.size.width) * 2))
+        }
+        // As a module the site imports: no fetch before the scene can play.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let json = try XCTUnwrap(String(data: encoder.encode(steps), encoding: .utf8))
+        let module = "// The menu bar's completion celebration, by menu-bar's SiteSprites test.\n"
+            + "export default \(json);\n"
+        try Data(module.utf8).write(to: directory.appendingPathComponent("celebrate.js"))
     }
 
     /// The face tinted white as on a dark menu bar, the sides over it, at 2×.

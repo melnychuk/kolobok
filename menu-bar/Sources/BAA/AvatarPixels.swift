@@ -8,10 +8,15 @@ extension AvatarArt {
         func rows(scale: Int) -> [String] { scale == 1 ? rows1 : rows2 }
     }
 
+    /// The face, 20 × 16 points. The sides use the same corners on a band two
+    /// points shorter (`bodyRows(height:scale:)`), so the face stands a point
+    /// proud of them at the top and at the bottom.
     static let body = Art(rows1: [
         ".27##############72.",
         "29################92",
         "7##################7",
+        "####################",
+        "####################",
         "####################",
         "####################",
         "####################",
@@ -45,6 +50,10 @@ extension AvatarArt {
         "########################################",
         "########################################",
         "########################################",
+        "########################################",
+        "########################################",
+        "########################################",
+        "########################################",
         "9######################################9",
         "7######################################7",
         "4######################################4",
@@ -61,11 +70,14 @@ extension AvatarArt {
         "######",
         "######",
         "######",
+        "######",
         "4####4"
     ], rows2: [
         ".59######95.",
         "5##########5",
         "9##########9",
+        "############",
+        "############",
         "############",
         "############",
         "############",
@@ -82,9 +94,12 @@ extension AvatarArt {
         "8####8",
         "######",
         "######",
+        "######",
         "4####4"
     ], rows2: [
         "7##########7",
+        "############",
+        "############",
         "############",
         "############",
         "############",
@@ -119,11 +134,14 @@ extension AvatarArt {
         "######",
         "######",
         "######",
+        "######",
         "4####4"
     ], rows2: [
         ".49######94.",
         "4##########4",
         "9##########9",
+        "############",
+        "############",
         "############",
         "############",
         "############",
@@ -148,10 +166,13 @@ extension AvatarArt {
     static let squint = Art(rows1: [
         "7####7",
         "######",
+        "######",
         "3####3"
     ], rows2: [
         "28########82",
         "8##########8",
+        "############",
+        "############",
         "############",
         "############",
         "8##########8",
@@ -165,7 +186,9 @@ extension AvatarArt {
     }
 
     /// Eye placement for each face, plus where the lids meet when it blinks.
-    /// Working looks toward the blue side on the left and done toward the green one on the right.
+    /// Working looks toward the blue side on the left; done, and the face
+    /// peeking back after a completion, toward the green one on the right;
+    /// dropping back in from above, down at its home.
     static func eyes(_ face: Face, blinking: Bool = false) -> [Eye] {
         func pair(_ art: Art, _ left: Int, _ top: Int) -> [Eye] {
             [Eye(art: art, left: left, top: top), Eye(art: art, left: left + 8, top: top)]
@@ -175,13 +198,15 @@ extension AvatarArt {
         switch face {
         case .idle: (eyes, lidsMeet) = (pair(open, 3, 4), 7)
         case .working: (eyes, lidsMeet) = (pair(focused, 2, 6), 8)
-        case .done: (eyes, lidsMeet) = (pair(happy, 4, 5), 7)
-        case .attention: (eyes, lidsMeet) = (pair(wide, 2, 3), 6)
-        // Halfway from wide (rows 3-9) to shut (row 6), on the same centre line.
-        case .wincing: (eyes, lidsMeet) = (pair(squint, 2, 5), 6)
-        case .asleep: (eyes, lidsMeet) = (pair(closed, 3, 8), 8)
+        case .done: (eyes, lidsMeet) = (pair(happy, 4, 6), 8)
+        case .attention: (eyes, lidsMeet) = (pair(wide, 2, 3), 7)
+        // Halfway from wide (rows 3-10) to shut, on the same centre line.
+        case .wincing: (eyes, lidsMeet) = (pair(squint, 2, 5), 7)
+        case .asleep: (eyes, lidsMeet) = (pair(closed, 3, 9), 9)
         case .puzzled:
-            (eyes, lidsMeet) = ([Eye(art: open, left: 3, top: 3), Eye(art: squint, left: 11, top: 6)], 6)
+            (eyes, lidsMeet) = ([Eye(art: open, left: 3, top: 3), Eye(art: squint, left: 11, top: 6)], 7)
+        case .peeking: (eyes, lidsMeet) = (pair(open, 5, 4), 7)
+        case .lookingDown: (eyes, lidsMeet) = (pair(open, 3, 7), 10)
         }
         guard blinking && face.blinks else { return eyes }
         return eyes.map { Eye(art: closed, left: $0.left, top: lidsMeet) }

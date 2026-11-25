@@ -23,6 +23,18 @@ final class AvatarTests: XCTestCase {
         }
     }
 
+    func testTheSidesBandIsTheFaceTwoPointsShorterWithTheSameCorners() {
+        for scale in [1, 2] {
+            let face = AvatarArt.body.rows(scale: scale)
+            let band = AvatarArt.bodyRows(height: AvatarArt.sideHeight, scale: scale)
+            XCTAssertEqual(AvatarArt.bodyRows(height: AvatarArt.faceHeight, scale: scale), face)
+            XCTAssertEqual(band.count, AvatarArt.sideHeight * scale)
+            XCTAssertEqual(Array(band.prefix(3 * scale)), Array(face.prefix(3 * scale)))
+            XCTAssertEqual(Array(band.suffix(3 * scale)), Array(face.suffix(3 * scale)))
+        }
+        XCTAssertEqual(AvatarArt.faceHeight - AvatarArt.sideHeight, 2)
+    }
+
     func testEveryFaceFitsInsideTheBodyAndOpensItsEyes() {
         for face in Face.allCases {
             for blinking in [false, true] {
@@ -53,7 +65,8 @@ final class AvatarTests: XCTestCase {
         XCTAssertEqual(reps.map(\.pixelsWide), [layout.width, layout.width * 2])
         for (rep, scale) in zip(reps, [1, 2]) {
             let face = AvatarArt.faceAlpha(.idle, scale: scale)
-            let top = (AvatarArt.itemHeight - AvatarArt.faceHeight) / 2 * scale
+            let top = AvatarArt.Pose.home.top * scale
+            XCTAssertEqual(AvatarArt.Pose.home.top, (AvatarArt.itemHeight - AvatarArt.faceHeight) / 2)
             for row in 0..<rep.pixelsHigh {
                 for column in 0..<rep.pixelsWide {
                     let faceRow = row - top, faceColumn = column - layout.faceX * scale
@@ -81,7 +94,8 @@ final class AvatarTests: XCTestCase {
             func alpha(_ rep: NSBitmapImageRep, _ column: Int, _ row: Int) -> UInt8 {
                 rep.bitmapData![(row * rep.pixelsWide + column) * 4 + 3]
             }
-            let top = (AvatarArt.itemHeight - AvatarArt.faceHeight) / 2 * scale
+            let top = AvatarArt.Pose.home.top * scale
+            let sideTop = (AvatarArt.itemHeight - AvatarArt.sideHeight) / 2 * scale
             let moat = AvatarArt.moat * scale
             let faceLeft = layout.faceX * scale, faceRight = (layout.faceX + AvatarArt.faceWidth) * scale - 1
             // Across the middle: solid side, then exactly the moat clear, then solid face, on both sides.
@@ -103,8 +117,24 @@ final class AvatarTests: XCTestCase {
                     XCTAssertEqual(alpha(sideRep, column, row), 0, "(\(column), \(row)) @\(scale)x")
                 }
             }
-            // A side's outer corner is the face's own corner.
-            XCTAssertEqual(alpha(sideRep, 0, top), alpha(faceRep, faceLeft, top))
+            // A side's outer corner is the face's own corner, a point lower
+            // (its top, clear of the label).
+            for row in 0..<3 * scale {
+                for column in 0..<AvatarArt.tuck * scale {
+                    XCTAssertEqual(alpha(sideRep, column, sideTop + row), alpha(faceRep, faceLeft + column, top + row),
+                                   "corner (\(column), \(row)) @\(scale)x")
+                }
+            }
+            // The face stands a point proud of the sides, above and below:
+            // nothing colored in its first and last point of rows.
+            for row in Array(0..<sideTop) + Array((sideTop + AvatarArt.sideHeight * scale)..<sideRep.pixelsHigh) {
+                for column in 0..<sideRep.pixelsWide {
+                    XCTAssertEqual(alpha(sideRep, column, row), 0, "(\(column), \(row)) @\(scale)x")
+                }
+            }
+            XCTAssertEqual(sideTop - top, scale)
+            XCTAssertEqual(alpha(faceRep, faceLeft + AvatarArt.faceWidth * scale / 2, top), 255)
+            XCTAssertEqual(alpha(faceRep, faceLeft + AvatarArt.faceWidth * scale / 2, top + AvatarArt.faceHeight * scale - 1), 255)
         }
     }
 
@@ -126,8 +156,8 @@ final class AvatarTests: XCTestCase {
                 .first { $0.pixelsWide == layout.width * scale })
             let data = try XCTUnwrap(rep.bitmapData)
             // Away from the side's rounded corners and the moat, it would otherwise be solid.
-            let top = ((AvatarArt.itemHeight - AvatarArt.faceHeight) / 2 + AvatarArt.tuck) * scale
-            let rows = top..<((AvatarArt.itemHeight + AvatarArt.faceHeight) / 2 - AvatarArt.tuck) * scale
+            let top = ((AvatarArt.itemHeight - AvatarArt.sideHeight) / 2 + AvatarArt.tuck) * scale
+            let rows = top..<((AvatarArt.itemHeight + AvatarArt.sideHeight) / 2 - AvatarArt.tuck) * scale
             let columns = AvatarArt.tuck * scale..<(layout.left - AvatarArt.moat) * scale
             return rows.reduce(0) { total, row in
                 total + columns.filter { data[(row * rep.pixelsWide + $0) * 4 + 3] == 0 }.count

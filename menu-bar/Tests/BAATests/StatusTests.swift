@@ -43,8 +43,10 @@ final class StatusTests: XCTestCase {
     }
 
     func testPreviewsCoverEveryFaceAndSeveralAgentKinds() {
-        // Every face a status can show; wincing only passes by in a completion's wipe.
-        XCTAssertEqual(Set(Preview.allCases.map(\.snapshot.face)), Set(Face.allCases).subtracting([.wincing]))
+        // Every face a status can show; wincing, peeking and looking down only
+        // pass by in a completion's celebration.
+        XCTAssertEqual(Set(Preview.allCases.map(\.snapshot.face)),
+                       Set(Face.allCases).subtracting([.wincing, .peeking, .lookingDown]))
         XCTAssertGreaterThan(Set(Preview.mixed.snapshot.agents.map(\.agent)).count, 2)
         XCTAssertEqual(Preview.mixed.snapshot.leftHint, .attention)
         XCTAssertEqual(Preview.workingAndDone.snapshot.leftHint, .working(2))

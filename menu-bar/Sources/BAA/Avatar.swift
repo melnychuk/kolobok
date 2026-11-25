@@ -5,22 +5,27 @@ import AppKit
 // scale has its own art, copied into bitmaps without resampling, so every
 // edge lands where it was drawn.
 //
-// The face is a 20 × 14 pt template image, so AppKit picks its color for the
+// The face is a 20 × 16 pt template image, so AppKit picks its color for the
 // actual menu bar. The status colors are a separate bitmap of the same frame:
 // like the Stick's status sides, they wrap the face's outline, held off it by
-// a one-point moat so the face stays distinct.
+// a one-point moat so the face stays distinct. The sides are two points
+// shorter than the face, so it stands a point proud of them, above and below.
 
 /// The face's expression for the current status. A blink is a passing frame, not a face.
 enum Face: CaseIterable, Equatable, Sendable {
     case idle, working, done, attention, asleep, puzzled
-    /// Both eyes squeezed half shut: only seen as a completion's green wipes
+    /// Both eyes squeezed half shut: only seen as a completion's green bursts
     /// over the frightened face (`Celebration`).
     case wincing
+    /// Peeking back in after a completion, toward the green side (`Celebration`).
+    case peeking
+    /// Peeking down from above at its home, before dropping back in (`Celebration`).
+    case lookingDown
 
     /// Expressions whose eyes are open enough to blink.
     var blinks: Bool {
         switch self {
-        case .idle, .working, .attention, .puzzled: return true
+        case .idle, .working, .attention, .puzzled, .peeking, .lookingDown: return true
         case .done, .asleep, .wincing: return false
         }
     }
@@ -40,7 +45,9 @@ enum LeftHint: Equatable, Hashable, Sendable {
 
 enum AvatarArt {
     static let faceWidth = 20
-    static let faceHeight = 14
+    static let faceHeight = 16
+    /// The sides' height: a point short of the face's at the top and at the bottom.
+    static let sideHeight = 14
     /// The status item image is taller than the face, centered in the menu bar.
     static let itemHeight = 18
     /// Visible width of the green completed side.
@@ -51,13 +58,43 @@ enum AvatarArt {
     /// from the color it sits on: one point, whole pixels at 1× and 2×.
     static let moat = 1
 
+    /// Where the face is in the item, in points: at home, or as it acts out a
+    /// completion, moved sideways, hopping, squashed or stretched. Its bottom
+    /// stays put unless it's lifted.
+    struct Pose: Hashable, Sendable {
+        var dx = 0
+        var lift = 0
+        var height = AvatarArt.faceHeight
+
+        static let home = Pose()
+
+        /// The face's top row in the item, in points.
+        var top: Int { (AvatarArt.itemHeight + AvatarArt.faceHeight) / 2 - lift - height }
+    }
+
+    /// The body's rows `height` points tall: its drawn corners, with solid
+    /// rows between them. The face is `faceHeight` tall; squashed, stretched
+    /// or as the sides' band, it keeps the same corners.
+    static func bodyRows(height: Int, scale: Int) -> [String] {
+        let rows = body.rows(scale: scale)
+        let corner = rows.prefix(while: { row in row.contains { $0 != "#" } }).count
+        let solid = String(repeating: "#", count: rows[0].count)
+        let middle = max(0, height * scale - 2 * corner)
+        return Array(rows.prefix(corner)) + Array(repeating: solid, count: middle) + Array(rows.suffix(corner))
+    }
+
     /// The face's alpha at one scale, rows top first, 0...1.
-    static func faceAlpha(_ face: Face, blinking: Bool = false, scale: Int) -> [[Double]] {
-        var alpha = body.rows(scale: scale).map { $0.map(level) }
+    static func faceAlpha(_ face: Face, blinking: Bool = false, height: Int = AvatarArt.faceHeight,
+                          scale: Int) -> [[Double]] {
+        var alpha = bodyRows(height: height, scale: scale).map { $0.map(level) }
+        // Squashed or stretched, the eyes stay about the face's middle.
+        let shift = (height - faceHeight) / 2 * scale
         for eye in eyes(face, blinking: blinking) {
             for (row, line) in eye.art.rows(scale: scale).enumerated() {
+                let faceRow = eye.top * scale + shift + row
+                guard alpha.indices.contains(faceRow) else { continue }
                 for (column, cut) in line.map(level).enumerated() {
-                    alpha[eye.top * scale + row][eye.left * scale + column] *= 1 - cut
+                    alpha[faceRow][eye.left * scale + column] *= 1 - cut
                 }
             }
         }
@@ -109,6 +146,83 @@ enum AvatarArt {
         return Layout(left: width, done: done)
     }
 
+    // MARK: Item-sized grids
+
+    /// A face-sized grid placed where `pose` puts the face in the item, at
+    /// one scale, clipped to the item: item rows top first, zero elsewhere.
+    static func placed(_ grid: [[Double]], layout: Layout, pose: Pose = .home, scale: Int) -> [[Double]] {
+        let left = (layout.faceX + pose.dx) * scale, top = pose.top * scale
+        return (0..<itemHeight * scale).map { row -> [Double] in
+            (0..<layout.width * scale).map { column -> Double in
+                let (gridRow, gridColumn) = (row - top, column - left)
+                guard grid.indices.contains(gridRow), grid[gridRow].indices.contains(gridColumn) else { return 0 }
+                return grid[gridRow][gridColumn]
+            }
+        }
+    }
+
+    /// The face's body, without eyes, where `pose` puts it.
+    static func bodyAlpha(layout: Layout, pose: Pose = .home, scale: Int) -> [[Double]] {
+        placed(bodyRows(height: pose.height, scale: scale).map { $0.map(level) },
+               layout: layout, pose: pose, scale: scale)
+    }
+
+    /// How much of each side covers each item pixel. A side is a band
+    /// `sideHeight` points tall, centered, whose outer corners are the face's
+    /// own, running `tuck` points under the face's home.
+    static func sideCoverage(layout: Layout, scale: Int) -> (left: [[Double]], done: [[Double]]) {
+        let band = bodyRows(height: sideHeight, scale: scale).map { $0.map(level) }
+        let top = (itemHeight - sideHeight) / 2 * scale
+        let corner = tuck * scale, width = layout.width * scale
+        var left = Array(repeating: Array(repeating: 0.0, count: width), count: itemHeight * scale)
+        var done = left
+        for (bandRow, line) in band.enumerated() {
+            for column in 0..<width {
+                if layout.left > 0, column < (layout.left + tuck) * scale {
+                    left[top + bandRow][column] = column < corner ? line[column] : 1
+                } else if layout.done, column >= (layout.faceX + faceWidth - tuck) * scale {
+                    let fromEdge = width - 1 - column
+                    done[top + bandRow][column] = fromEdge < corner ? line[line.count - 1 - fromEdge] : 1
+                }
+            }
+        }
+        return (left, done)
+    }
+
+    /// The sides' band right across the item, `sideHeight` points tall with
+    /// the sides' outer corners at both ends: what stays of the icon while the
+    /// face is blasted away by a completion and comes back.
+    static func bar(layout: Layout, scale: Int) -> [[Double]] {
+        let band = bodyRows(height: sideHeight, scale: scale).map { $0.map(level) }
+        let top = (itemHeight - sideHeight) / 2 * scale
+        let corner = tuck * scale, width = layout.width * scale
+        var bar = Array(repeating: Array(repeating: 0.0, count: width), count: itemHeight * scale)
+        for (bandRow, line) in band.enumerated() {
+            for column in 0..<width {
+                let fromEdge = width - 1 - column
+                bar[top + bandRow][column] = column < corner ? line[column]
+                    : fromEdge < corner ? line[line.count - 1 - fromEdge] : 1
+            }
+        }
+        return bar
+    }
+
+    /// The whole icon's outline at home: the face and its sides, with no moat.
+    static func silhouette(layout: Layout, scale: Int) -> [[Double]] {
+        let sides = sideCoverage(layout: layout, scale: scale)
+        let body = bodyAlpha(layout: layout, scale: scale)
+        return combined(body, sides.left, sides.done)
+    }
+
+    /// The strongest of some item-sized grids, pixel by pixel.
+    private static func combined(_ first: [[Double]], _ others: [[Double]]...) -> [[Double]] {
+        first.indices.map { row -> [Double] in
+            first[row].indices.map { column -> Double in
+                others.reduce(first[row][column]) { max($0, $1[row][column]) }
+            }
+        }
+    }
+
     // MARK: Images
 
     /// One straight (unpremultiplied) sRGB pixel.
@@ -119,25 +233,31 @@ enum AvatarArt {
     }
 
     private enum Key: Hashable {
-        case face(Face, blinking: Bool, Layout)
-        case sides(LeftHint?, peak: Bool, charged: Bool, Layout)
-        case flash(Layout, edge: Int?)
-        case wipe(LeftHint?, Layout, edge: Int)
+        case face(Face, blinking: Bool, Layout, Pose, blast: Int?)
+        case sides(LeftHint?, peak: Bool, charged: Bool, Layout, Pose, wash: Bool)
+        case flash(Layout)
+        case star(Layout, step: Int)
+        case burst(LeftHint?, Layout, step: Int)
         case blank(Layout)
     }
 
     @MainActor private static var cache: [Key: NSImage] = [:]
 
     /// A template image of the face in the status item's frame, at 1× and 2×.
+    /// `blast` is a completion burst's step: the face cut away wherever its
+    /// star has reached, since the green itself stays in the sides' band.
     @MainActor
-    static func image(_ face: Face, blinking: Bool = false, layout: Layout = Layout()) -> NSImage {
+    static func image(_ face: Face, blinking: Bool = false, layout: Layout = Layout(),
+                      pose: Pose = .home, blast: Int? = nil) -> NSImage {
         let blinking = blinking && face.blinks
-        return cached(.face(face, blinking: blinking, layout)) {
+        return cached(.face(face, blinking: blinking, layout, pose, blast: blast)) {
             let image = NSImage(size: NSSize(width: layout.width, height: itemHeight))
             for scale in [1, 2] {
-                let alpha = faceAlpha(face, blinking: blinking, scale: scale)
+                let alpha = placed(faceAlpha(face, blinking: blinking, height: pose.height, scale: scale),
+                                   layout: layout, pose: pose, scale: scale)
+                let star = blast.map { starCoverage(layout: layout, step: $0, scale: scale) }
                 image.addRepresentation(bitmap(width: layout.width, scale: scale) { column, row in
-                    .black(faceAlpha(alpha, at: column, row, layout: layout, scale: scale))
+                    .black(alpha[row][column] * (1 - (star?[row][column] ?? 0)))
                 })
             }
             image.isTemplate = true
@@ -145,70 +265,118 @@ enum AvatarArt {
         }
     }
 
-    /// The colored sides for the same frame as `image`, or nil without any.
-    /// `charged` lights the working side with the Stick's charge, before a completion.
+    /// The colored sides for the same frame as `image`, or nil without any,
+    /// clear of the face and its moat where `pose` puts the face.
+    /// `charged` lights the working side with the Stick's charge, before a
+    /// completion. `wash` lays the green bar the face comes back onto after
+    /// one, under the sides: the band they share, right across the item.
     @MainActor
     static func sides(left: LeftHint?, attentionPeak: Bool = false, charged: Bool = false,
-                      layout: Layout) -> NSImage? {
-        guard left != nil || layout.done else { return nil }
+                      layout: Layout, pose: Pose = .home, wash: Bool = false) -> NSImage? {
+        guard left != nil || layout.done || wash else { return nil }
         let peak = attentionPeak && left == .attention
         let charged = charged && left.map { if case .working = $0 { true } else { false } } == true
-        return cached(.sides(left, peak: peak, charged: charged, layout)) {
+        return cached(.sides(left, peak: peak, charged: charged, layout, pose, wash: wash)) {
             let image = NSImage(size: NSSize(width: layout.width, height: itemHeight))
             for scale in [1, 2] {
-                image.addRepresentation(sidesBitmap(left: left, peak: peak, charged: charged,
-                                                    layout: layout, scale: scale))
+                image.addRepresentation(sidesBitmap(left: left, peak: peak, charged: charged, layout: layout,
+                                                    pose: pose, wash: wash, scale: scale))
             }
             return image
         }
     }
 
-    /// The completion flash: the whole icon, face, sides and moat, in solid
-    /// green, the avatar gone into it. Not a template: it's drawn over `blank`,
-    /// or with an `edge` (in points), only left of a ragged line around it, as
-    /// the green wipes in.
+    /// The completion flash: a solid green bar, the sides' band right across
+    /// the icon, the face blasted away. Not a template: it's drawn over `blank`.
     @MainActor
-    static func flash(layout: Layout, edge: Int? = nil) -> NSImage {
-        cached(.flash(layout, edge: edge)) {
+    static func flash(layout: Layout) -> NSImage {
+        cached(.flash(layout)) {
             let image = NSImage(size: NSSize(width: layout.width, height: itemHeight))
-            guard let green = StickColor.done.usingColorSpace(.sRGB) else { return image }
             for scale in [1, 2] {
-                let silhouette = body.rows(scale: scale).map { $0.map(level) }
+                let alpha = bar(layout: layout, scale: scale)
                 image.addRepresentation(bitmap(width: layout.width, scale: scale) { column, row in
-                    let faceRow = row - (itemHeight - faceHeight) / 2 * scale
-                    guard silhouette.indices.contains(faceRow),
-                          column < wipeReach(edge: edge, row: row / scale, width: layout.width) * scale else {
-                        return .clear
-                    }
-                    let side = sideCoverage(column: column, faceRow: faceRow, silhouette: silhouette,
-                                            layout: layout, scale: scale)
-                    let faceColumn = column - layout.faceX * scale
-                    // The face's body, and the sides around it.
-                    let alpha = silhouette[faceRow].indices.contains(faceColumn)
-                        ? max(silhouette[faceRow][faceColumn], max(side.left, side.done))
-                        : max(side.left, side.done)
-                    return Pixel(red: green.redComponent, green: green.greenComponent,
-                                 blue: green.blueComponent, alpha: alpha)
+                    paint(StickColor.done, alpha[row][column])
                 })
             }
             return image
         }
     }
 
-    /// The completion wipe: green sweeping across the icon from the left, up to
-    /// `edge` points, over its charged sides. Drawn over the frightened face,
-    /// it covers the face as it passes; the face shows right of the edge.
+    /// Steps the completion burst grows in.
+    static let burstSteps = 6
+
+    /// The burst's step, 1...`burstSteps`, at 0 to 1 of the way through it.
+    static func burstStep(_ progress: Double) -> Int {
+        min(burstSteps, max(1, Int(progress * Double(burstSteps)) + 1))
+    }
+
+    /// The completion burst: a green star spinning out from where the
+    /// charged side meets the face (or from the face's middle, without one),
+    /// over the charged sides and the frightened face, but only ever in the
+    /// sides' band, right across the icon: above and below it, the star cuts
+    /// the face away instead (`image(blast:)`). At its last step the face is
+    /// gone and the band is solid green.
     @MainActor
-    static func wipe(left: LeftHint?, layout: Layout, edge: Int) -> NSImage {
+    static func burst(left: LeftHint?, layout: Layout, step: Int) -> NSImage {
         let sides = sides(left: left, charged: true, layout: layout)
-        let green = flash(layout: layout, edge: edge)
-        return cached(.wipe(left, layout, edge: edge)) {
+        let star = star(layout: layout, step: step)
+        return cached(.burst(left, layout, step: step)) {
             NSImage(size: NSSize(width: layout.width, height: itemHeight), flipped: false) { rect in
                 sides?.draw(in: rect)
-                green.draw(in: rect)
+                star.draw(in: rect)
                 return true
             }
         }
+    }
+
+    /// The burst's star alone, in the sides' band.
+    @MainActor
+    private static func star(layout: Layout, step: Int) -> NSImage {
+        cached(.star(layout, step: step)) {
+            let image = NSImage(size: NSSize(width: layout.width, height: itemHeight))
+            for scale in [1, 2] {
+                let star = starCoverage(layout: layout, step: step, scale: scale)
+                let bar = bar(layout: layout, scale: scale)
+                image.addRepresentation(bitmap(width: layout.width, scale: scale) { column, row in
+                    paint(StickColor.done, star[row][column] * bar[row][column])
+                })
+            }
+            return image
+        }
+    }
+
+    /// How much of each item pixel the burst's star covers at a step,
+    /// unclipped: ten spinning rays, grown until at the last step its inner
+    /// points, between the rays, pass the farthest corner.
+    static func starCoverage(layout: Layout, step: Int, scale: Int) -> [[Double]] {
+        let (originX, originY) = burstOrigin(layout)
+        let reach = [0.0, Double(layout.width)].flatMap { x in
+            [0.0, Double(itemHeight)].map { y in hypot(x - originX, y - originY) }
+        }.max() ?? 0
+        let progress = Double(step) / Double(burstSteps)
+        let full = (reach + 1) / starInner
+        let outer = 4 + (full - 4) * pow(progress, 1.6)
+        let inner = starInner * outer
+        let spin = Double(step) * 0.35
+        return (0..<itemHeight * scale).map { row -> [Double] in
+            (0..<layout.width * scale).map { column -> Double in
+                let dx = (Double(column) + 0.5) / Double(scale) - originX
+                let dy = (Double(row) + 0.5) / Double(scale) - originY
+                // Ten rays, sharpened by the cube.
+                let ray = abs(cos(5 * (atan2(dy, dx) + spin)))
+                let radius = inner + (outer - inner) * ray * ray * ray
+                return min(max((radius - hypot(dx, dy)) * Double(scale) + 0.5, 0), 1)
+            }
+        }
+    }
+
+    /// The star's inner points, between its rays, as a share of its outer ones.
+    private static let starInner = 0.62
+
+    /// Where the burst starts, in points from the item's top-left.
+    static func burstOrigin(_ layout: Layout) -> (Double, Double) {
+        let x = layout.left > 0 ? layout.left - moat : layout.faceX + faceWidth / 2
+        return (Double(x), Double(itemHeight) / 2)
     }
 
     /// An empty template image the size of the icon: keeps the status item's
@@ -231,67 +399,90 @@ enum AvatarArt {
         return image
     }
 
-    /// The face's alpha at an item-image pixel; zero outside the face.
-    private static func faceAlpha(_ face: [[Double]], at column: Int, _ row: Int,
-                                  layout: Layout, scale: Int) -> Double {
-        let faceRow = row - (itemHeight - faceHeight) / 2 * scale
-        let faceColumn = column - layout.faceX * scale
-        guard face.indices.contains(faceRow), face[faceRow].indices.contains(faceColumn) else { return 0 }
-        return face[faceRow][faceColumn]
+    private static func paint(_ color: NSColor, _ alpha: Double) -> Pixel {
+        guard alpha > 0, let rgb = color.usingColorSpace(.sRGB) else { return .clear }
+        return Pixel(red: rgb.redComponent, green: rgb.greenComponent, blue: rgb.blueComponent, alpha: alpha)
     }
 
-    /// How much of each side covers an item-image pixel, before the moat. A side
-    /// is a solid band whose outer corners copy the face's own corners, running
-    /// `tuck` points under the face.
-    private static func sideCoverage(column: Int, faceRow: Int, silhouette: [[Double]],
-                                     layout: Layout, scale: Int) -> (left: Double, done: Double) {
-        let corner = tuck * scale
-        let bodyWidth = faceWidth * scale
-        if layout.left > 0, column < (layout.left + tuck) * scale {
-            return (column < corner ? silhouette[faceRow][column] : 1, 0)
+    /// One straight sRGB color, for blending.
+    private struct Shade {
+        var red, green, blue: Double
+
+        init(_ color: NSColor) {
+            let rgb = color.usingColorSpace(.sRGB) ?? color
+            red = Double(rgb.redComponent)
+            green = Double(rgb.greenComponent)
+            blue = Double(rgb.blueComponent)
         }
-        if layout.done, column - layout.faceX * scale >= bodyWidth - corner {
-            let fromEdge = layout.width * scale - 1 - column
-            return (0, fromEdge < corner ? silhouette[faceRow][bodyWidth - 1 - fromEdge] : 1)
+
+        init(red: Double, green: Double, blue: Double) {
+            self.red = red
+            self.green = green
+            self.blue = blue
         }
-        return (0, 0)
+
+        /// This shade blending smoothly into `other` between two points
+        /// across the item, at a pixel's centre.
+        func blend(into other: Shade, from start: Double, to end: Double, column: Int, scale: Int) -> Shade {
+            let x = (Double(column) + 0.5) / Double(scale)
+            let t = min(max((x - start) / (end - start), 0), 1)
+            let amount = t * t * (3 - 2 * t)
+            return Shade(red: red + (other.red - red) * amount, green: green + (other.green - green) * amount,
+                         blue: blue + (other.blue - blue) * amount)
+        }
     }
 
-    private static func sidesBitmap(left: LeftHint?, peak: Bool, charged: Bool,
-                                    layout: Layout, scale: Int) -> NSBitmapImageRep {
-        let silhouette = body.rows(scale: scale).map { $0.map(level) }
-        let moatRadius = moat * scale
-        // The face plus its moat, padded so the moat can reach past the face's edge.
-        let padding = Array(repeating: 0.0, count: moatRadius)
-        let keepOut = grown(silhouette.map { padding + $0 + padding }, by: moatRadius)
-        let leftColor = left.map { hint -> NSColor in
+    private static func sidesBitmap(left: LeftHint?, peak: Bool, charged: Bool, layout: Layout,
+                                    pose: Pose, wash: Bool, scale: Int) -> NSBitmapImageRep {
+        let coverage = sideCoverage(layout: layout, scale: scale)
+        let green = Shade(StickColor.done)
+        let leftShade = left.map { hint -> Shade in
             switch hint {
-            case .working: return charged ? StickColor.charge : StickColor.working
-            case .attention: return peak ? StickColor.requestPeak : StickColor.request
+            case .working: return Shade(StickColor.working)
+            case .attention: return Shade(peak ? StickColor.requestPeak : StickColor.request)
             }
         }
-        let rep = bitmap(width: layout.width, scale: scale) { column, row in
-            let faceRow = row - (itemHeight - faceHeight) / 2 * scale
-            guard silhouette.indices.contains(faceRow) else { return .clear }
-            let faceColumn = column - layout.faceX * scale
-            let side = sideCoverage(column: column, faceRow: faceRow, silhouette: silhouette,
-                                    layout: layout, scale: scale)
-            let color: NSColor?
-            let coverage: Double
-            if side.left > 0, let leftColor {
-                (color, coverage) = (leftColor, side.left)
-            } else if side.done > 0 {
-                (color, coverage) = (StickColor.done, side.done)
-            } else {
-                return .clear
+        // Layers, painted in order: how much each covers, and its shade by column.
+        var layers: [(coverage: [[Double]], shade: (Int) -> Shade)] = []
+        if wash {
+            // One bar, the left side's color blending into green across the face's home.
+            let (start, end) = (Double(layout.faceX - moat), Double(layout.faceX + faceWidth))
+            layers.append((bar(layout: layout, scale: scale), { column in
+                leftShade?.blend(into: green, from: start, to: end, column: column, scale: scale) ?? green
+            }))
+        } else {
+            if let leftShade {
+                // Charged, the working side lights up green; with a green done
+                // side too, it blends from blue at its edge into green at the
+                // face, as if the light runs into it.
+                let charge = Shade(StickColor.charge), end = Double(layout.left - moat)
+                layers.append((coverage.left, { column in
+                    !charged ? leftShade
+                        : layout.done ? leftShade.blend(into: charge, from: 0, to: end, column: column, scale: scale)
+                        : charge
+                }))
             }
-            // Clear of the face and its moat; no pixel holds both face and color.
-            let onFace = silhouette[faceRow].indices.contains(faceColumn) && silhouette[faceRow][faceColumn] > 0
-            let nearFace = keepOut[faceRow].indices.contains(faceColumn + moatRadius)
-                ? keepOut[faceRow][faceColumn + moatRadius] : 0
-            guard !onFace, let rgb = color?.usingColorSpace(.sRGB) else { return .clear }
-            return Pixel(red: rgb.redComponent, green: rgb.greenComponent, blue: rgb.blueComponent,
-                         alpha: coverage * (1 - nearFace))
+            layers.append((coverage.done, { _ in green }))
+        }
+        // Clear of the face and its moat; no pixel holds both face and color.
+        let face = bodyAlpha(layout: layout, pose: pose, scale: scale)
+        let nearFace = grown(face, by: moat * scale)
+        let rep = bitmap(width: layout.width, scale: scale) { column, row in
+            guard face[row][column] == 0 else { return .clear }
+            var pixel = Pixel.clear
+            for layer in layers {
+                let alpha = layer.coverage[row][column]
+                guard alpha > 0 else { continue }
+                let shade = layer.shade(column)
+                let below = pixel.alpha * (1 - alpha)
+                let total = alpha + below
+                pixel = Pixel(red: (shade.red * alpha + pixel.red * below) / total,
+                              green: (shade.green * alpha + pixel.green * below) / total,
+                              blue: (shade.blue * alpha + pixel.blue * below) / total,
+                              alpha: total)
+            }
+            pixel.alpha *= 1 - nearFace[row][column]
+            return pixel
         }
         if let left { drawLabel(left, on: rep, layout: layout) }
         return rep
@@ -351,30 +542,12 @@ enum StickColor {
     static let done = rgb(0x22, 0xC5, 0x5E)
     static let request = rgb(0xFA, 0xCC, 0x15)
     static let requestPeak = rgb(0xFB, 0x92, 0x16)
-    /// The charge before a completion's flash. firmware/task_cues.h charges with
-    /// a pale lime (#A6FF5C), too faint on a light menu bar, so this uses the done green.
+    /// The charge before a completion's flash, blending into the working side.
+    /// firmware/task_cues.h charges with a pale lime (#A6FF5C), too faint on a
+    /// light menu bar, so this uses the done green.
     static let charge = done
 
     private static func rgb(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> NSColor {
         NSColor(srgbRed: red / 255, green: green / 255, blue: blue / 255, alpha: 1)
-    }
-}
-
-// MARK: - Completion wipe
-
-extension AvatarArt {
-    /// How far the completion wipe reaches along one row, in points: `edge`,
-    /// give or take three points in bands three points tall, so its leading
-    /// edge breaks into tongues like a burst. The same at every scale and
-    /// different at each step, so it flickers as it crosses. No wipe (nil) or
-    /// a finished one reaches the whole way.
-    static func wipeReach(edge: Int?, row: Int, width: Int) -> Int {
-        guard let edge, edge < width else { return width }
-        let band = row / 3
-        var hash = UInt32(truncatingIfNeeded: (band &* 73_856_093) ^ (edge &* 19_349_663))
-        hash ^= hash >> 13
-        hash = hash &* 0x5BD1_E995
-        hash ^= hash >> 15
-        return edge + Int(hash % 7) - 3
     }
 }
