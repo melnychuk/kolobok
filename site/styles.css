@@ -100,7 +100,7 @@ body::after {
   background: #10121cb8; backdrop-filter: blur(18px); color: #fff; white-space: nowrap;
   font: 500 calc(13px * var(--z)) / 1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
-.mb-apple { display: block; width: calc(15px * var(--z)); height: auto; flex: none; }
+.mb-apple { display: block; width: calc(14px * var(--z)); height: auto; flex: none; }
 .mb-extras { display: flex; align-items: center; gap: calc(11px * var(--z)); flex: none; }
 /* The status item, highlighted like macOS while its menu is open. */
 .mb-item {
