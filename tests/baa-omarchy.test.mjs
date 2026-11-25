@@ -215,3 +215,21 @@ test("the compact avatar's celebration stays in its item, eyes inside the face",
     }
   }
 });
+
+test("a theme's ink labels the side where it reads clearly, else black or white", () => {
+  const blue = Baa.rgb(Baa.colors.working), yellow = Baa.rgb(Baa.colors.request);
+  const dark = Baa.rgb("#030a03"), light = Baa.rgb("#f2f0e6"), mid = Baa.rgb("#3b4252");
+  assert.deepEqual(Baa.labelInk(blue, dark), dark);
+  assert.deepEqual(Baa.labelInk(yellow, dark), dark);
+  // A light theme's background doesn't read on blue: the more contrasting of black and white does.
+  assert.deepEqual(Baa.labelInk(blue, light), [0, 0, 0]);
+  assert.deepEqual(Baa.labelInk(blue, mid), [0, 0, 0]);
+  assert.ok(Baa.contrast([0, 0, 0], blue) > Baa.contrast([1, 1, 1], blue));
+  // The menu bar's own colors without one; the theme's with one.
+  const view = Baa.describe(snapshot(2, 0, 0), null, 0, { measure, compact: true });
+  assert.equal(Baa.render(view, 1, [1, 1, 1]).label.color, "white");
+  assert.equal(Baa.render(view, 1, [1, 1, 1], dark).label.color, "rgb(3, 10, 3)");
+  const ask = Baa.describe(snapshot(1, 1, 0), null, 0, { measure, compact: true });
+  assert.equal(Baa.render(ask, 1, [1, 1, 1]).label.color, "black");
+  assert.equal(Baa.render(ask, 1, [1, 1, 1], light).label.color, "rgb(0, 0, 0)");
+});

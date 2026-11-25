@@ -27,6 +27,9 @@ Item {
     /// two loaded snapshots is a new completion: loading isn't one.
     property bool loaded: true
     property color foreground: "white"
+    /// The bar's background: the side's digits use it where it reads clearly
+    /// on blue (on a dark theme, nearly black), else black or white.
+    property color background: "black"
     property string fontFamily: ""
     /// The bar's height; below 22 px the avatar keeps to its face's rows.
     property int barHeight: 26
@@ -83,6 +86,7 @@ Item {
         redraw()
     }
     onForegroundChanged: redraw()
+    onBackgroundChanged: redraw()
     onHeadroomChanged: redraw()
     onCompactChanged: redraw()
     onRunningChanged: if (!running) { celebration = null; blinking = false; redraw() }
@@ -93,7 +97,8 @@ Item {
         Qt.callLater(function() { root.shown = root.snapshot; root.completed = true })
     }
 
-    readonly property var pixels: view ? Baa.render(view, pixelScale, [foreground.r, foreground.g, foreground.b]) : null
+    readonly property var pixels: view ? Baa.render(view, pixelScale, [foreground.r, foreground.g, foreground.b],
+                                                    [background.r, background.g, background.b]) : null
 
     TextMetrics {
         id: metrics
@@ -124,7 +129,7 @@ Item {
             ctx.font = "bold " + (label.size * scale) + "px \"" + root.fontFamily + "\""
             ctx.textAlign = "center"
             ctx.textBaseline = "alphabetic"
-            // White digits on blue, as the menu bar draws them; a black `!` on yellow.
+            // In the bar's background color where it reads clearly on the side.
             ctx.fillStyle = label.color
             const capHeight = labelFont.tightBoundingRect("8").height
             ctx.fillText(label.text, label.x * scale, (label.y + capHeight / 2) * scale)

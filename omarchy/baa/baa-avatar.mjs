@@ -172,6 +172,29 @@ const WORKING = rgb(colors.working), DONE = rgb(colors.done);
 const REQUEST = rgb(colors.request), REQUEST_PEAK = rgb(colors.requestPeak);
 const CHARGE = DONE;
 
+/** WCAG relative luminance of a straight sRGB color, components 0–1. */
+function luminance(color) {
+  const linear = color.map((c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+/** WCAG contrast ratio between two colors, 1–21. */
+export function contrast(a, b) {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+/**
+ * The ink for a label on a side: `preferred` (a theme's color) if it reads
+ * clearly there (4.5:1), otherwise black or white, whichever contrasts more.
+ */
+export function labelInk(side, preferred) {
+  if (preferred && contrast(preferred, side) >= 4.5) return preferred;
+  return contrast([0, 0, 0], side) >= contrast([1, 1, 1], side) ? [0, 0, 0] : [1, 1, 1];
+}
+
+const css = (color) => `rgb(${color.map((c) => Math.round(Math.min(Math.max(c, 0), 1) * 255)).join(", ")})`;
+
 function blend(from, to, start, end, column, scale) {
   const x = (column + 0.5) / scale;
   const t = Math.min(Math.max((x - start) / (end - start), 0), 1);
@@ -367,10 +390,11 @@ export function describe(snapshot, celebration, now,
  * ([r, g, b], 0–1). Returns {width, height, base, star, label}: straight
  * RGBA bytes, item rows only (just the face's rows without headroom), and the
  * label to draw over `base` before `star`: {text, color, size, x, y}, its
- * font size in pixels and its centre in points: white digits on blue, as
- * the menu bar draws them, or a black `!` on yellow.
+ * font size in pixels and its centre in points: white digits on blue and a
+ * black `!` on yellow, as the menu bar draws them, or with `ink` ([r, g, b],
+ * say the bar's background) whichever of it, black or white reads clearly.
  */
-export function render(view, scale, foreground) {
+export function render(view, scale, foreground, ink = null) {
   const L = view.layout, G = L.G;
   const width = L.width * scale, height = G.itemHeight * scale;
   const hint = view.left;
@@ -442,7 +466,10 @@ export function render(view, scale, foreground) {
     }
   }
   const label = hint && view.sides && !view.flash
-    ? { text: hint.text, color: hint.kind === "working" ? "white" : "black", size: G.labelSize,
+    ? { text: hint.text, size: G.labelSize,
+        // The menu bar's white digits and black `!`, unless a theme's ink is given.
+        color: ink ? css(labelInk(hint.kind === "working" ? WORKING : view.sides.peak ? REQUEST_PEAK : REQUEST, ink))
+          : hint.kind === "working" ? "white" : "black",
         x: (L.left - G.moat) / 2, y: G.itemHeight / 2 }
     : null;
   // Without headroom, only the face's own rows.
