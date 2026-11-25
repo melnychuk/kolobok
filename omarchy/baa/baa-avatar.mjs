@@ -38,11 +38,18 @@ function level(character) {
 const levels = (rows) => rows.map((row) => Array.from(row, level));
 const artRows = (name, scale) => ART.art[name][scale === 1 ? 0 : 1];
 
-/** The body `height` points tall: its drawn corners with solid rows between. */
-export function bodyRows(height, scale) {
+/** The body's corners' size in pixels: its rows (and columns) that aren't solid. */
+export function cornerSize(scale) {
   const rows = artRows("body", scale);
   let corner = 0;
   while (corner < rows.length && /[^#]/.test(rows[corner])) corner++;
+  return corner;
+}
+
+/** The body `height` points tall: its drawn corners with solid rows between. */
+export function bodyRows(height, scale) {
+  const rows = artRows("body", scale);
+  const corner = cornerSize(scale);
   const solid = "#".repeat(rows[0].length);
   const middle = Math.max(0, height * scale - 2 * corner);
   return [...rows.slice(0, corner), ...Array(middle).fill(solid), ...rows.slice(rows.length - corner)];
@@ -114,7 +121,7 @@ export function sideCoverage(L, scale) {
   const G = L.G;
   const band = levels(bodyRows(G.sideHeight, scale));
   const top = Math.trunc((G.itemHeight - G.sideHeight) / 2) * scale;
-  const corner = G.tuck * scale, width = L.width * scale;
+  const corner = cornerSize(scale), width = L.width * scale;
   const left = grid(width, G.itemHeight * scale), done = grid(width, G.itemHeight * scale);
   band.forEach((line, bandRow) => {
     for (let column = 0; column < width; column++) {
@@ -134,7 +141,7 @@ export function bar(L, scale) {
   const G = L.G;
   const band = levels(bodyRows(G.sideHeight, scale));
   const top = Math.trunc((G.itemHeight - G.sideHeight) / 2) * scale;
-  const corner = G.tuck * scale, width = L.width * scale;
+  const corner = cornerSize(scale), width = L.width * scale;
   const out = grid(width, G.itemHeight * scale);
   band.forEach((line, bandRow) => {
     for (let column = 0; column < width; column++) {

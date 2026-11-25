@@ -52,7 +52,7 @@ enum AvatarArt {
     static let itemHeight = 18
     /// Visible width of the green completed side.
     static let doneWidth = 5
-    /// How far a side runs under the face: its corner radius, past which the body is solid.
+    /// How far a side runs under the face, in points.
     static let tuck = 4
     /// Clear moat between the face and the sides, so the face stays distinct
     /// from the color it sits on: one point, whole pixels at 1× and 2×.
@@ -77,10 +77,16 @@ enum AvatarArt {
     /// or as the sides' band, it keeps the same corners.
     static func bodyRows(height: Int, scale: Int) -> [String] {
         let rows = body.rows(scale: scale)
-        let corner = rows.prefix(while: { row in row.contains { $0 != "#" } }).count
+        let corner = cornerSize(scale: scale)
         let solid = String(repeating: "#", count: rows[0].count)
         let middle = max(0, height * scale - 2 * corner)
         return Array(rows.prefix(corner)) + Array(repeating: solid, count: middle) + Array(rows.suffix(corner))
+    }
+
+    /// The body's corners' size in pixels at one scale: its rows (and, the
+    /// corners being square, columns) that aren't solid.
+    static func cornerSize(scale: Int) -> Int {
+        body.rows(scale: scale).prefix(while: { row in row.contains { $0 != "#" } }).count
     }
 
     /// The face's alpha at one scale, rows top first, 0...1.
@@ -173,7 +179,7 @@ enum AvatarArt {
     static func sideCoverage(layout: Layout, scale: Int) -> (left: [[Double]], done: [[Double]]) {
         let band = bodyRows(height: sideHeight, scale: scale).map { $0.map(level) }
         let top = (itemHeight - sideHeight) / 2 * scale
-        let corner = tuck * scale, width = layout.width * scale
+        let corner = cornerSize(scale: scale), width = layout.width * scale
         var left = Array(repeating: Array(repeating: 0.0, count: width), count: itemHeight * scale)
         var done = left
         for (bandRow, line) in band.enumerated() {
@@ -195,7 +201,7 @@ enum AvatarArt {
     static func bar(layout: Layout, scale: Int) -> [[Double]] {
         let band = bodyRows(height: sideHeight, scale: scale).map { $0.map(level) }
         let top = (itemHeight - sideHeight) / 2 * scale
-        let corner = tuck * scale, width = layout.width * scale
+        let corner = cornerSize(scale: scale), width = layout.width * scale
         var bar = Array(repeating: Array(repeating: 0.0, count: width), count: itemHeight * scale)
         for (bandRow, line) in band.enumerated() {
             for column in 0..<width {
