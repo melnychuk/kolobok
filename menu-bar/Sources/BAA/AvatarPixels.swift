@@ -89,6 +89,26 @@ extension AvatarArt {
         ".59######95."
     ])
 
+    // At rest, keep the open eyes' width but soften the look with shorter eyes.
+    static let resting = Art(rows1: [
+        "4####4",
+        "######",
+        "######",
+        "######",
+        "4####4"
+    ], rows2: [
+        ".59######95.",
+        "5##########5",
+        "9##########9",
+        "############",
+        "############",
+        "############",
+        "############",
+        "9##########9",
+        "5##########5",
+        ".59######95."
+    ])
+
     // Focused on the work: a flat, lowered upper lid over the open eye's lower half.
     static let focused = Art(rows1: [
         "8####8",
@@ -196,7 +216,7 @@ extension AvatarArt {
         let eyes: [Eye]
         let lidsMeet: Int
         switch face {
-        case .idle: (eyes, lidsMeet) = (pair(open, 3, 4), 7)
+        case .idle: (eyes, lidsMeet) = (pair(resting, 3, 5), 7)
         case .working: (eyes, lidsMeet) = (pair(focused, 2, 6), 8)
         case .done: (eyes, lidsMeet) = (pair(happy, 4, 6), 8)
         case .attention: (eyes, lidsMeet) = (pair(wide, 2, 3), 7)

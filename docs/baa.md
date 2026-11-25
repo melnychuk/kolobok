@@ -36,9 +36,8 @@ below.
 | No bridge | Puzzled face, one eye squinting: BAA can't know what the agents are doing |
 
 The face is a template image, so macOS colors it for the menu bar. The active
-count is cut out of the blue the way the eyes are cut out of the face, so it
-shows the menu bar behind it and matches the eyes. The `!` steps between the
-Stick's request yellow and orange. Open eyes blink every few seconds.
+count is white on blue, and the black `!` sits on a side that steps between
+the Stick's request yellow and orange. Open eyes blink every few seconds.
 
 A new completion plays a short version of the Stick's transfer cue: the blue
 side charges with green light, flickering faster and faster; the face jumps,

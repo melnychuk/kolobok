@@ -4,7 +4,7 @@ import XCTest
 
 final class AvatarTests: XCTestCase {
     private let arts: [String: AvatarArt.Art] = [
-        "open": AvatarArt.open, "focused": AvatarArt.focused, "happy": AvatarArt.happy,
+        "open": AvatarArt.open, "resting": AvatarArt.resting, "focused": AvatarArt.focused, "happy": AvatarArt.happy,
         "wide": AvatarArt.wide, "closed": AvatarArt.closed, "squint": AvatarArt.squint
     ]
 
@@ -53,6 +53,16 @@ final class AvatarTests: XCTestCase {
         }
         XCTAssertNotEqual(AvatarArt.faceAlpha(.idle, blinking: true, scale: 1), AvatarArt.faceAlpha(.idle, scale: 1))
         XCTAssertEqual(AvatarArt.faceAlpha(.done, blinking: true, scale: 1), AvatarArt.faceAlpha(.done, scale: 1))
+    }
+
+    func testRestingEyesAreShorterAndCenteredAroundTheBlink() {
+        let eyes = AvatarArt.eyes(.idle)
+        let lids = AvatarArt.eyes(.idle, blinking: true)
+        for (eye, lid) in zip(eyes, lids) {
+            XCTAssertEqual(eye.art.rows1.count, AvatarArt.open.rows1.count - 2)
+            XCTAssertEqual(eye.art.rows1[0].count, AvatarArt.open.rows1[0].count)
+            XCTAssertEqual(eye.top + eye.art.rows1.count / 2, lid.top)
+        }
     }
 
     @MainActor
@@ -148,8 +158,8 @@ final class AvatarTests: XCTestCase {
     }
 
     @MainActor
-    func testActiveDigitsAreCutOutLikeTheEyesButTheRequestMarkIsInked() throws {
-        func clearInsideSide(_ hint: LeftHint, scale: Int) throws -> Int {
+    func testActiveDigitsAreWhiteAndTheRequestMarkIsBlack() throws {
+        func hasInk(_ shade: UInt8, for hint: LeftHint, scale: Int) throws -> Bool {
             let layout = AvatarArt.layout(left: hint, done: false)
             let image = try XCTUnwrap(AvatarArt.sides(left: hint, layout: layout))
             let rep = try XCTUnwrap(image.representations.compactMap { $0 as? NSBitmapImageRep }
@@ -159,13 +169,21 @@ final class AvatarTests: XCTestCase {
             let top = ((AvatarArt.itemHeight - AvatarArt.sideHeight) / 2 + AvatarArt.tuck) * scale
             let rows = top..<((AvatarArt.itemHeight + AvatarArt.sideHeight) / 2 - AvatarArt.tuck) * scale
             let columns = AvatarArt.tuck * scale..<(layout.left - AvatarArt.moat) * scale
-            return rows.reduce(0) { total, row in
-                total + columns.filter { data[(row * rep.pixelsWide + $0) * 4 + 3] == 0 }.count
+            var found = false
+            for row in rows {
+                for column in columns {
+                    let offset = (row * rep.pixelsWide + column) * 4
+                    XCTAssertEqual(data[offset + 3], 255, "The label must not punch through the side")
+                    if data[offset] == shade && data[offset + 1] == shade && data[offset + 2] == shade {
+                        found = true
+                    }
+                }
             }
+            return found
         }
         for scale in [1, 2] {
-            XCTAssertGreaterThan(try clearInsideSide(.working(2), scale: scale), 0, "@\(scale)x")
-            XCTAssertEqual(try clearInsideSide(.attention, scale: scale), 0, "@\(scale)x")
+            XCTAssertTrue(try hasInk(255, for: .working(2), scale: scale), "@\(scale)x")
+            XCTAssertTrue(try hasInk(0, for: .attention, scale: scale), "@\(scale)x")
         }
     }
 

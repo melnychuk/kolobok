@@ -68,7 +68,7 @@ final class CelebrationTests: XCTestCase {
     }
 
     private func alpha(_ bitmap: NSBitmapImageRep, _ column: Int, _ row: Int) -> Double {
-        bitmap.colorAt(x: column, y: row)?.alphaComponent ?? 0
+        Double(bitmap.colorAt(x: column, y: row)?.alphaComponent ?? 0)
     }
 
     /// Whether the face shows any eye holes: nearly clear pixels inside it.

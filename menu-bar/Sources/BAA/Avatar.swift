@@ -488,18 +488,16 @@ enum AvatarArt {
         return rep
     }
 
-    /// Active-task digits are cut out of the blue, like the eyes are cut out of
-    /// the face, so they match the eyes on any menu bar. The request `!` stays
-    /// solid black on yellow, as on the Stick.
+    /// Active-task digits stay white on any menu bar. The request `!` stays
+    /// black on yellow, as on the Stick.
     private static func drawLabel(_ hint: LeftHint, on rep: NSBitmapImageRep, layout: Layout) {
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
         // The context already maps the rep's point size onto its pixels.
-        let context = NSGraphicsContext(bitmapImageRep: rep)
-        NSGraphicsContext.current = context
-        if case .working = hint { context?.cgContext.setBlendMode(.destinationOut) }
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        let color: NSColor = hint == .attention ? .black : .white
         let text = NSAttributedString(string: hint.text, attributes: [
-            .font: hintFont, .foregroundColor: NSColor.black
+            .font: hintFont, .foregroundColor: color
         ])
         // Centered on the part of the side outside the moat.
         let center = NSPoint(x: CGFloat(layout.left - moat) / 2, y: CGFloat(itemHeight) / 2)
