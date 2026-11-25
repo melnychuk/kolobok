@@ -95,3 +95,28 @@ it never launches Herdr, sends terminal input, or approves prompts. Only one
 focus runs at a time, shared with the Stick's button. BAA doesn't read
 transcripts; the bridge passes it each agent's kind, its terminal or tab name
 and its status, and keeps them out of its logs.
+
+## The same avatar in Omarchy's bar
+
+On Linux, the Omarchy Agents bar widget can show BAA's avatar in place of its
+robot glyph, drawn from the same pixels: `omarchy/baa/BaaIcon.qml` draws it on
+a Canvas with `baa-avatar.mjs`, a JavaScript port of the app's drawing and
+celebration. The art, eye placements and timings come straight from the Swift
+in `omarchy/baa/baa-art.mjs`; re-export it after changing them:
+
+```sh
+python3 scripts/export-baa-art.py
+node --test tests/baa-omarchy.test.mjs   # the port against the app's own frames
+scripts/install-baa-omarchy.sh           # copy it where the widget loads it
+```
+
+The install script only copies files into `~/.local/share/stick-s3/baa`; the
+widget picks them up the next time the shell loads it, and keeps its glyph
+without them or on a vertical bar. The face takes the bar's foreground color,
+the side's label the bar's font, and the counts are the widget's own.
+
+At the menu bar's 18 points the avatar needs a bar at least 24 px tall:
+Omarchy's default bar is 26 px, so it fills the 16 px icon canvas at rest and
+uses the point above and below only while it jumps. On a smaller bar it keeps
+to the face's 16 points: the fright's jump becomes a flinch and nothing
+stretches.
