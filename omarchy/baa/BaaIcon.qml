@@ -9,8 +9,10 @@ import "baa-avatar.mjs" as Baa
 // completion's celebration. Load it from the Agents bar widget and bind the
 // counts; it only draws, it never acts on tasks.
 //
-// At the menu bar's own 18 points it needs a bar at least 24 px tall; on a
-// smaller bar it keeps to the face's 16 points: its jumps become flinches.
+// It's the compact avatar by default, two points shorter than the menu
+// bar's, so it sits among the bar's other icons: a 14 px face in a 16 px
+// item, using the point above and below only while it jumps. On a bar under
+// 22 px it keeps to the face's rows: its jumps become flinches.
 Item {
     id: root
 
@@ -26,22 +28,27 @@ Item {
     property bool loaded: true
     property color foreground: "white"
     property string fontFamily: ""
-    /// The bar's height; below 24 px the avatar keeps to 16 px.
+    /// The bar's height; below 22 px the avatar keeps to its face's rows.
     property int barHeight: 26
+    /// The compact avatar, or the menu bar's own size.
+    property bool compact: true
     /// Stop timers (and celebrations) while hidden.
     property bool running: visible
 
-    readonly property int headroom: barHeight >= 24 ? 1 : 0
+    readonly property var geometry: compact ? Baa.compactSizes : Baa.sizes
+    readonly property int headroom: barHeight >= geometry.itemHeight + 6 ? 1 : 0
     readonly property int pixelScale: Screen.devicePixelRatio > 1.25 ? 2 : 1
     readonly property var snapshot: ({ active: active, blocked: blocked, done: done, healthy: healthy && loaded })
     property var shown: null
     property var celebration: null
     property bool blinking: false
     property bool peak: false
-    property var view: describe()
+    // Set by redraw(), never by a binding: describing measures the label,
+    // which writes to the text metrics.
+    property var view: null
 
-    implicitWidth: view.layout.width
-    implicitHeight: headroom ? Baa.sizes.itemHeight : Baa.sizes.faceHeight
+    implicitWidth: view ? view.layout.width : 0
+    implicitHeight: headroom ? geometry.itemHeight : geometry.faceHeight
     width: implicitWidth
     height: implicitHeight
 
@@ -54,7 +61,7 @@ Item {
 
     function describe() {
         return Baa.describe(snapshot, celebration, now(), {
-            blinking: blinking, peak: peak, headroom: headroom, measure: measure
+            blinking: blinking, peak: peak, headroom: headroom, compact: compact, measure: measure
         })
     }
 
@@ -77,6 +84,7 @@ Item {
     }
     onForegroundChanged: redraw()
     onHeadroomChanged: redraw()
+    onCompactChanged: redraw()
     onRunningChanged: if (!running) { celebration = null; blinking = false; redraw() }
     Component.onCompleted: {
         shown = snapshot
@@ -85,12 +93,12 @@ Item {
         Qt.callLater(function() { root.shown = root.snapshot; root.completed = true })
     }
 
-    readonly property var pixels: Baa.render(view, pixelScale, [foreground.r, foreground.g, foreground.b])
+    readonly property var pixels: view ? Baa.render(view, pixelScale, [foreground.r, foreground.g, foreground.b]) : null
 
     TextMetrics {
         id: metrics
         font.family: root.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: root.geometry.labelSize
         font.bold: true
     }
     FontMetrics {
@@ -108,17 +116,16 @@ Item {
             const ctx = getContext("2d")
             ctx.reset()
             const px = root.pixels
+            if (!px) return
             put(ctx, px.base, px.width, px.height)
             const label = px.label
             if (!label) return
             const scale = px.scale
-            ctx.font = "bold " + (11 * scale) + "px \"" + root.fontFamily + "\""
+            ctx.font = "bold " + (label.size * scale) + "px \"" + root.fontFamily + "\""
             ctx.textAlign = "center"
             ctx.textBaseline = "alphabetic"
-            ctx.fillStyle = "black"
-            // Digits are cut out of the blue like the eyes are cut out of the
-            // face; the request mark is inked, as on the Stick.
-            ctx.globalCompositeOperation = label.kind === "cut" ? "destination-out" : "source-over"
+            // White digits on blue, as the menu bar draws them; a black `!` on yellow.
+            ctx.fillStyle = label.color
             const capHeight = labelFont.tightBoundingRect("8").height
             ctx.fillText(label.text, label.x * scale, (label.y + capHeight / 2) * scale)
         }
@@ -134,7 +141,7 @@ Item {
             const ctx = getContext("2d")
             ctx.reset()
             const px = root.pixels
-            if (px.star) put(ctx, px.star, px.width, px.height)
+            if (px && px.star) put(ctx, px.star, px.width, px.height)
         }
     }
 

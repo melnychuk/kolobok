@@ -174,3 +174,44 @@ test("without headroom the icon keeps to the face's 16 points", () => {
     }
   }
 });
+
+test("the compact avatar is two points shorter, its face filling a 16 px icon at rest", () => {
+  const C = Baa.compactSizes;
+  assert.deepEqual([C.faceHeight, C.sideHeight, C.itemHeight], [S.faceHeight - 2, S.sideHeight - 2, S.itemHeight - 2]);
+  assert.ok(C.labelSize < S.labelSize);
+  const view = Baa.describe(snapshot(2, 0, 1), null, 0, { measure, compact: true });
+  const px = Baa.render(view, 1, [1, 1, 1]);
+  assert.equal(px.height, 16);
+  assert.equal(Baa.poseTop(view.pose, C), 1);
+  // The face fills rows 1-14; the sides keep a point clear of it above and below.
+  const alpha = (column, row) => px.base[(row * px.width + column) * 4 + 3];
+  const face = view.layout.faceX + C.faceWidth / 2;
+  assert.equal(alpha(face, 1), 255);
+  assert.equal(alpha(face, 14), 255);
+  assert.equal(alpha(face, 0), 0);
+  assert.equal(alpha(face, 15), 0);
+  for (const row of [0, 1, 14, 15]) assert.equal(alpha(1, row), 0, `side row ${row}`);
+  assert.equal(alpha(1, 8), 255);
+  assert.equal(px.label.size, C.labelSize);
+});
+
+test("the compact avatar's celebration stays in its item, eyes inside the face", () => {
+  const C = Baa.compactSizes;
+  for (const [before, after] of [[snapshot(1, 0, 0), snapshot(0, 0, 1)], [snapshot(2, 0, 0), snapshot(1, 0, 1)]]) {
+    const celebration = { started: 0, before };
+    for (let ms = 0; ms < Baa.celebrationLength(celebration) * 1000; ms += 1000 / 60) {
+      const view = Baa.describe(after, celebration, ms / 1000, { measure, compact: true });
+      const px = Baa.render(view, 2, [1, 1, 1]);
+      assert.equal(px.height, C.itemHeight * 2);
+      if (!view.face) continue;
+      const { pose } = view;
+      assert.ok(Baa.poseTop(pose, C) + pose.height <= C.itemHeight, `${ms}ms bottom`);
+      if (pose.dx !== 0 || pose.lift <= 1) assert.ok(Baa.poseTop(pose, C) >= 0, `${ms}ms top`);
+      const shift = Math.trunc((pose.height - S.faceHeight) / 2);
+      for (const [art, , top] of Baa.eyes(view.face, view.blinking)) {
+        const rows = { open: 7, resting: 5, focused: 5, happy: 4, wide: 8, closed: 1, squint: 4 }[art];
+        assert.ok(top + shift >= 1 && top + shift + rows <= pose.height - 1, `${ms}ms ${view.face} eyes`);
+      }
+    }
+  }
+});

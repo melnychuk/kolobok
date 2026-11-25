@@ -11,10 +11,21 @@
 // with the bar's own font, between the two.
 import ART from "./baa-art.mjs";
 
-const S = ART.sizes;
 const C = ART.celebration;
-export const sizes = S;
 export const colors = ART.colors;
+
+/** The menu bar's sizes, in points, with its label's font size. */
+export const sizes = Object.freeze(Object.assign({ labelSize: 11, compact: false }, ART.sizes));
+/**
+ * A compact avatar, two points shorter, for bars where the menu bar's would
+ * look large among other icons: the face two points shorter (its eyes a
+ * point higher in it, as when it squashes), the sides too, and smaller digits.
+ */
+export const compactSizes = Object.freeze(Object.assign({}, sizes, {
+  compact: true, faceHeight: sizes.faceHeight - 2, sideHeight: sizes.sideHeight - 2,
+  itemHeight: sizes.itemHeight - 2, labelSize: 9,
+}));
+const S = sizes;
 
 // ---------------------------------------------------------------- art
 
@@ -45,7 +56,7 @@ export function eyes(face, blinking = false) {
   return entry.eyes.map(([, left]) => ["closed", left, entry.lidsMeet]);
 }
 
-/** The face's alpha grid at one scale, `height` points tall. */
+/** The face's alpha grid at one scale, `height` points tall; its eyes sit about the menu bar face's middle. */
 export function faceAlpha(face, blinking = false, height = S.faceHeight, scale = 1) {
   const alpha = levels(bodyRows(height, scale));
   const shift = Math.trunc((height - S.faceHeight) / 2) * scale; // Swift's integer division
@@ -62,9 +73,12 @@ export function faceAlpha(face, blinking = false, height = S.faceHeight, scale =
 
 // ------------------------------------------------------------- layout
 
-/** `left` is the active side's width in points (0 for none), measured from its label. */
-export function layout(left = 0, done = false) {
-  return { left, done, faceX: left, width: left + S.faceWidth + (done ? S.doneWidth : 0) };
+/**
+ * `left` is the active side's width in points (0 for none), measured from its
+ * label. `G` is the geometry, `sizes` or `compactSizes`; the layout carries it.
+ */
+export function layout(left = 0, done = false, G = S) {
+  return { left, done, faceX: left, width: left + G.faceWidth + (done ? G.doneWidth : 0), G };
 }
 
 /** The active side's width for a label `textWidth` points wide (Avatar.swift's layout). */
@@ -72,17 +86,17 @@ export function leftWidth(textWidth) {
   return Math.max(12, Math.ceil(textWidth) + 6);
 }
 
-export const home = Object.freeze({ dx: 0, lift: 0, height: S.faceHeight });
+export const home = (G = S) => ({ dx: 0, lift: 0, height: G.faceHeight });
 
-export function poseTop(pose) {
-  return Math.trunc((S.itemHeight + S.faceHeight) / 2) - pose.lift - pose.height;
+export function poseTop(pose, G = S) {
+  return Math.trunc((G.itemHeight + G.faceHeight) / 2) - pose.lift - pose.height;
 }
 
 const grid = (width, height, value = 0) => Array.from({ length: height }, () => new Array(width).fill(value));
 
 function placed(source, L, pose, scale) {
-  const left = (L.faceX + pose.dx) * scale, top = poseTop(pose) * scale;
-  const out = grid(L.width * scale, S.itemHeight * scale);
+  const left = (L.faceX + pose.dx) * scale, top = poseTop(pose, L.G) * scale;
+  const out = grid(L.width * scale, L.G.itemHeight * scale);
   source.forEach((line, row) => {
     const r = top + row;
     if (r < 0 || r >= out.length) return;
@@ -97,15 +111,16 @@ function placed(source, L, pose, scale) {
 const bodyAlpha = (L, pose, scale) => placed(levels(bodyRows(pose.height, scale)), L, pose, scale);
 
 export function sideCoverage(L, scale) {
-  const band = levels(bodyRows(S.sideHeight, scale));
-  const top = Math.trunc((S.itemHeight - S.sideHeight) / 2) * scale;
-  const corner = S.tuck * scale, width = L.width * scale;
-  const left = grid(width, S.itemHeight * scale), done = grid(width, S.itemHeight * scale);
+  const G = L.G;
+  const band = levels(bodyRows(G.sideHeight, scale));
+  const top = Math.trunc((G.itemHeight - G.sideHeight) / 2) * scale;
+  const corner = G.tuck * scale, width = L.width * scale;
+  const left = grid(width, G.itemHeight * scale), done = grid(width, G.itemHeight * scale);
   band.forEach((line, bandRow) => {
     for (let column = 0; column < width; column++) {
-      if (L.left > 0 && column < (L.left + S.tuck) * scale) {
+      if (L.left > 0 && column < (L.left + G.tuck) * scale) {
         left[top + bandRow][column] = column < corner ? line[column] : 1;
-      } else if (L.done && column >= (L.faceX + S.faceWidth - S.tuck) * scale) {
+      } else if (L.done && column >= (L.faceX + G.faceWidth - G.tuck) * scale) {
         const fromEdge = width - 1 - column;
         done[top + bandRow][column] = fromEdge < corner ? line[line.length - 1 - fromEdge] : 1;
       }
@@ -116,10 +131,11 @@ export function sideCoverage(L, scale) {
 
 /** The sides' band right across the item. */
 export function bar(L, scale) {
-  const band = levels(bodyRows(S.sideHeight, scale));
-  const top = Math.trunc((S.itemHeight - S.sideHeight) / 2) * scale;
-  const corner = S.tuck * scale, width = L.width * scale;
-  const out = grid(width, S.itemHeight * scale);
+  const G = L.G;
+  const band = levels(bodyRows(G.sideHeight, scale));
+  const top = Math.trunc((G.itemHeight - G.sideHeight) / 2) * scale;
+  const corner = G.tuck * scale, width = L.width * scale;
+  const out = grid(width, G.itemHeight * scale);
   band.forEach((line, bandRow) => {
     for (let column = 0; column < width; column++) {
       const fromEdge = width - 1 - column;
@@ -166,8 +182,8 @@ function blend(from, to, start, end, column, scale) {
 // ------------------------------------------------------------- burst
 
 export function burstOrigin(L) {
-  const x = L.left > 0 ? L.left - S.moat : L.faceX + Math.trunc(S.faceWidth / 2);
-  return [x, S.itemHeight / 2];
+  const x = L.left > 0 ? L.left - L.G.moat : L.faceX + Math.trunc(L.G.faceWidth / 2);
+  return [x, L.G.itemHeight / 2];
 }
 
 export function burstStep(progress) {
@@ -177,13 +193,13 @@ export function burstStep(progress) {
 export function starCoverage(L, step, scale) {
   const [originX, originY] = burstOrigin(L);
   let reach = 0;
-  for (const x of [0, L.width]) for (const y of [0, S.itemHeight]) reach = Math.max(reach, Math.hypot(x - originX, y - originY));
+  for (const x of [0, L.width]) for (const y of [0, L.G.itemHeight]) reach = Math.max(reach, Math.hypot(x - originX, y - originY));
   const progress = step / S.burstSteps;
   const full = (reach + 1) / S.starInner;
   const outer = 4 + (full - 4) * Math.pow(progress, 1.6);
   const inner = S.starInner * outer;
   const spin = step * 0.35;
-  return Array.from({ length: S.itemHeight * scale }, (_, row) =>
+  return Array.from({ length: L.G.itemHeight * scale }, (_, row) =>
     Array.from({ length: L.width * scale }, (_, column) => {
       const dx = (column + 0.5) / scale - originX, dy = (row + 0.5) / scale - originY;
       const ray = Math.abs(Math.cos(5 * (Math.atan2(dy, dx) + spin)));
@@ -246,32 +262,34 @@ const mix = (from, to, amount) => {
   const delta = (to - from) * amount; // Swift's .rounded(): halves away from zero
   return from + Math.sign(delta) * Math.floor(Math.abs(delta) + 0.5);
 };
-const pose = (dx = 0, lift = 0, height = S.faceHeight) => ({ dx, lift, height });
+const pose = (dx, lift, height) => ({ dx, lift, height });
 
-function landing(beat) {
-  return { face: "done", blinking: false, pose: pose(0, 0, beat === "land" ? 14 : 17), wash: false };
+// Squashed on landing two points shorter than at rest; stretched a point taller.
+function landing(beat, G) {
+  return { face: "done", blinking: false, pose: pose(0, 0, G.faceHeight + (beat === "land" ? -2 : 1)), wash: false };
 }
 
 /** Celebration.act: the face on its way home in the new icon. */
 export function act(beat, progress, L) {
-  if (beat === "land" || beat === "rebound") return landing(beat);
+  const G = L.G, rest = G.faceHeight;
+  if (beat === "land" || beat === "rebound") return landing(beat, G);
   if (L.left > 0) {
     // Dropping in from above, so it doesn't cross the active side.
-    const start = S.faceHeight - 2;
-    const looking = (lift, blinking = false) => ({ face: "lookingDown", blinking, pose: pose(0, lift), wash: true });
+    const start = rest - 2;
+    const looking = (lift, blinking = false) => ({ face: "lookingDown", blinking, pose: pose(0, lift, rest), wash: true });
     if (beat === "creep") return looking(mix(start, C.dropPeek, 1 - (1 - progress) * (1 - progress)));
     if (beat === "peek") return looking(C.dropPeek, progress >= 0.45 && progress < 0.75);
     if (beat === "crouch") return looking(C.dropPeek + 1);
     const lift = mix(C.dropPeek + 1, 0, progress * progress);
-    return { face: "attention", blinking: false, pose: progress < 0.85 ? pose(0, lift, 17) : pose(0, lift), wash: true };
+    return { face: "attention", blinking: false, pose: pose(0, lift, progress < 0.85 ? rest + 1 : rest), wash: true };
   }
-  const start = -(L.faceX + S.faceWidth - 3), peek = -(L.faceX + C.peekHidden);
+  const start = -(L.faceX + G.faceWidth - 3), peek = -(L.faceX + C.peekHidden);
   const peeking = (p, blinking = false) => ({ face: "peeking", blinking, pose: p, wash: true });
-  if (beat === "creep") return peeking(pose(mix(start, peek, 1 - (1 - progress) * (1 - progress))));
-  if (beat === "peek") return peeking(pose(peek), progress >= 0.45 && progress < 0.75);
-  if (beat === "crouch") return peeking(pose(peek, 0, 14));
+  if (beat === "creep") return peeking(pose(mix(start, peek, 1 - (1 - progress) * (1 - progress)), 0, rest));
+  if (beat === "peek") return peeking(pose(peek, 0, rest), progress >= 0.45 && progress < 0.75);
+  if (beat === "crouch") return peeking(pose(peek, 0, rest - 2));
   const dx = mix(peek, 0, progress * progress * (3 - 2 * progress));
-  const p = progress < 0.25 ? pose(dx, 0, 17) : progress < 0.85 ? pose(dx, 1) : pose(dx);
+  const p = progress < 0.25 ? pose(dx, 0, rest + 1) : progress < 0.85 ? pose(dx, 1, rest) : pose(dx, 0, rest);
   return { face: "attention", blinking: false, pose: p, wash: true };
 }
 
@@ -298,33 +316,37 @@ export const hasDone = (snapshot) => snapshot.healthy && snapshot.done > 0;
 
 /**
  * What to draw at a moment: MenuBar.swift's StatusIcon.images. `measure`
- * gives a label's width in points. `headroom` 1 keeps the menu bar's point
- * above and below the face for its jumps; 0 keeps everything in the face's
- * 16 points, for a smaller bar: the jumps become flinches, nothing stretches.
+ * gives a label's width in points. `headroom` 1 keeps a point above and
+ * below the face for its jumps; 0 keeps everything in the face's own rows,
+ * for a smaller bar: the jumps become flinches, nothing stretches. `compact`
+ * draws `compactSizes`, two points shorter than the menu bar's avatar.
  */
-export function describe(snapshot, celebration, now, { blinking = false, peak = false, headroom = 1, measure }) {
+export function describe(snapshot, celebration, now,
+                         { blinking = false, peak = false, headroom = 1, compact = false, measure }) {
+  const G = compact ? compactSizes : sizes;
+  const rest = home(G);
   const layoutFor = (s) => {
     const hint = leftHint(s);
-    return layout(hint ? leftWidth(measure(hint.text)) : 0, hasDone(s));
+    return layout(hint ? leftWidth(measure(hint.text)) : 0, hasDone(s), G);
   };
   const before = celebration ? celebration.before : snapshot;
   const old = layoutFor(before), next = layoutFor(snapshot);
   const frame = celebration ? celebrationFrame(celebration, now) : { kind: "finished" };
   const fit = (p) => headroom >= 1 ? p
-    : pose(p.dx, p.lift === 1 && p.height >= S.faceHeight ? 0 : p.lift, Math.min(p.height, S.faceHeight));
+    : pose(p.dx, p.lift === 1 && p.height >= G.faceHeight ? 0 : p.lift, Math.min(p.height, G.faceHeight));
   const view = (L, hint, extra) => Object.assign({ layout: L, left: hint, headroom }, extra);
   switch (frame.kind) {
     case "charge":
-      return view(old, leftHint(before), { face: faceFor(before), pose: home, sides: { charged: frame.lit } });
+      return view(old, leftHint(before), { face: faceFor(before), pose: rest, sides: { charged: frame.lit } });
     case "fright": {
-      const p = frame.jumped ? (headroom >= 1 ? pose(0, 1) : pose(0, 0, 15)) : home;
+      const p = !frame.jumped ? rest : headroom >= 1 ? pose(0, 1, G.faceHeight) : pose(0, 0, G.faceHeight - 1);
       return view(old, leftHint(before), { face: "attention", pose: p, sides: { charged: true } });
     }
     case "burst": {
       const [face, closed] = burstEyes(frame.progress);
       const step = burstStep(frame.progress);
       return view(old, leftHint(before), {
-        face, blinking: closed, pose: home, blast: step, sides: { charged: true }, star: step });
+        face, blinking: closed, pose: rest, blast: step, sides: { charged: true }, star: step });
     }
     case "gone":
       return view(next, leftHint(snapshot), { face: null, flash: true });
@@ -334,7 +356,7 @@ export function describe(snapshot, celebration, now, { blinking = false, peak = 
         face: a.face, blinking: a.blinking, pose: fit(a.pose), sides: { peak, wash: a.wash } });
     }
     default:
-      return view(next, leftHint(snapshot), { face: faceFor(snapshot), blinking, pose: home, sides: { peak } });
+      return view(next, leftHint(snapshot), { face: faceFor(snapshot), blinking, pose: rest, sides: { peak } });
   }
 }
 
@@ -343,13 +365,14 @@ export function describe(snapshot, celebration, now, { blinking = false, peak = 
 /**
  * Pixels for a description at `scale` (1 or 2), the face in `foreground`
  * ([r, g, b], 0–1). Returns {width, height, base, star, label}: straight
- * RGBA bytes, item rows only (16 points tall without headroom), and the
- * label to draw over `base` before `star`: {text, kind, x, y} in points,
- * centred on (x, y); kind "cut" erases it, "ink" draws it black.
+ * RGBA bytes, item rows only (just the face's rows without headroom), and the
+ * label to draw over `base` before `star`: {text, color, size, x, y}, its
+ * font size in pixels and its centre in points: white digits on blue, as
+ * the menu bar draws them, or a black `!` on yellow.
  */
 export function render(view, scale, foreground) {
-  const L = view.layout;
-  const width = L.width * scale, height = S.itemHeight * scale;
+  const L = view.layout, G = L.G;
+  const width = L.width * scale, height = G.itemHeight * scale;
   const hint = view.left;
   const blinking = !!view.blinking && !!view.face && ART.eyes[view.face].blinks;
   // The colored layer: sides, wash or flash, clear of the face and its moat.
@@ -361,12 +384,12 @@ export function render(view, scale, foreground) {
     const cover = sideCoverage(L, scale);
     const leftShade = hint ? (hint.kind === "working" ? WORKING : peak ? REQUEST_PEAK : REQUEST) : null;
     if (wash) {
-      const start = L.faceX - S.moat, end = L.faceX + S.faceWidth;
+      const start = L.faceX - G.moat, end = L.faceX + G.faceWidth;
       layers.push([bar(L, scale), (c) => leftShade ? blend(leftShade, DONE, start, end, c, scale) : DONE]);
     } else {
       if (leftShade) {
         const lit = charged && hint.kind === "working";
-        const end = L.left - S.moat;
+        const end = L.left - G.moat;
         layers.push([cover.left, (c) => !lit ? leftShade : L.done ? blend(leftShade, CHARGE, 0, end, c, scale) : CHARGE]);
       }
       layers.push([cover.done, () => DONE]);
@@ -374,7 +397,7 @@ export function render(view, scale, foreground) {
   }
   const face = view.face ? placed(faceAlpha(view.face, blinking, view.pose.height, scale), L, view.pose, scale) : null;
   const body = view.face ? bodyAlpha(L, view.pose, scale) : null;
-  const near = body ? grown(body, S.moat * scale) : null;
+  const near = body ? grown(body, G.moat * scale) : null;
   const star = view.star ? starCoverage(L, view.star, scale) : null;
   const band = view.star ? bar(L, scale) : null;
 
@@ -419,11 +442,12 @@ export function render(view, scale, foreground) {
     }
   }
   const label = hint && view.sides && !view.flash
-    ? { text: hint.text, kind: hint.kind === "working" ? "cut" : "ink", x: (L.left - S.moat) / 2, y: S.itemHeight / 2 }
+    ? { text: hint.text, color: hint.kind === "working" ? "white" : "black", size: G.labelSize,
+        x: (L.left - G.moat) / 2, y: G.itemHeight / 2 }
     : null;
-  // Without headroom, only the face's own 16 points of rows.
-  const crop = view.headroom >= 1 ? 0 : Math.trunc((S.itemHeight - S.faceHeight) / 2);
-  const keep = (bytes) => bytes && bytes.slice(crop * scale * width * 4, (S.itemHeight - crop) * scale * width * 4);
+  // Without headroom, only the face's own rows.
+  const crop = view.headroom >= 1 ? 0 : Math.trunc((G.itemHeight - G.faceHeight) / 2);
+  const keep = (bytes) => bytes && bytes.slice(crop * scale * width * 4, (G.itemHeight - crop) * scale * width * 4);
   return {
     width, height: height - 2 * crop * scale, scale,
     base: keep(base), star: keep(starBytes),

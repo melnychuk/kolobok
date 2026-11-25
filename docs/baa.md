@@ -114,8 +114,10 @@ widget picks them up the next time the shell loads it, and keeps its glyph
 without them or on a vertical bar. The face takes the bar's foreground color,
 the side's label the bar's font, and the counts are the widget's own.
 
-At the menu bar's 18 points the avatar needs a bar at least 24 px tall:
-Omarchy's default bar is 26 px, so it fills the 16 px icon canvas at rest and
-uses the point above and below only while it jumps. On a smaller bar it keeps
-to the face's 16 points: the fright's jump becomes a flinch and nothing
-stretches.
+Omarchy draws the compact avatar, two points shorter than the menu bar's so
+it sits among the bar's other icons: a 14 px face over 12 px sides with 9 px
+digits, filling the 16 px icon canvas of Omarchy's default 26 px bar at rest
+and using the pixel above and below only while it jumps. On a bar under 22 px
+it keeps to the face's rows: the fright's jump becomes a flinch and nothing
+stretches. The eyes are the menu bar's, a point higher in the shorter face,
+as when it squashes.
